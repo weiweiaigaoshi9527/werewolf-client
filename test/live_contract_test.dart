@@ -21,6 +21,10 @@ import 'package:werewolf_app/store.dart';
 ///
 /// 它驱动的是**客户端真实代码路径**（ApiClient / AppStore / WsClient），不是另写一套请求，
 /// 因此任何一次通过都等价于「三端共用的协议层此刻仍然对齐」。
+///
+/// ⚠️ 跑这套用例期间不要用 curl 或别的客户端登录同一个账号：服务端是单会话，
+/// 新登录会回收旧 token，会让跑到一半的用例莫名报「未登录或会话已过期」（不是产品 bug）。
+/// 同理，用 --plain-name 只跑某一条会跳过第 2 条的登录，后续用例必然 401。
 void main() {
   final base = (Platform.environment['WW_LIVE_BASE'] ?? '').trim();
   final user = (Platform.environment['WW_LIVE_USER'] ?? '').trim();
