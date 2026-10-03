@@ -1,0 +1,145 @@
+name: 三端客户端构建
+
+# Linux 桌面版无法在 Windows 上交叉产出（Flutter 要求 GNU/Linux 构建主机），
+# 因此三端安装包统一由本工作流在各自官方 runner 上出；Windows/Android 本机也能出（见 README）。
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: '是否创建 GitHub Release（填 yes）'
+        required: false
+        default: 'yes'
+  push:
+    tags: ['v*']
+
+env:
+  FLUTTER_VERSION: '3.24.5'
+
+jobs:
+  meta:
+    name: 读取版本号
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: ver
+        run: |
+          v=$(grep -m1 '^version:' pubspec.yaml | sed -E 's/version:[[:space:]]*([0-9.+]+).*/\1/')
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then v="${GITHUB_REF_NAME#v}"; fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "本次构建版本：$v"
+
+  quality:
+    name: 静态检查与单元测试
+    needs: meta
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      # 只跑离线套件：live 契约测试需要可达的服务端，靠 WW_LIVE_BASE 自行开启
+      - run: flutter test test/config_test.dart test/voice_codec_test.dart test/widget_test.dart
+
+  windows:
+    name: Windows x64
+    needs: [meta, quality]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - run: flutter pub get
+      - run: flutter build windows --release --dart-define=WW_SERVER=${{ vars.WW_SERVER }}
+      - name: 压缩便携包
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $zip = "dist\werewolf-client-${{ needs.meta.outputs.version }}-windows-x64.zip"
+          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath $zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: dist\*.zip
+
+  linux:
+    name: Linux x64（deb + 便携包）
+    needs: [meta, quality]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: 安装原生工具链
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev \
+            libglu1-mesa-dev libstdc++-12-dev patchelf dpkg-dev
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - run: flutter pub get
+      - run: flutter build linux --release --dart-define=WW_SERVER=${{ vars.WW_SERVER }}
+      - name: 产出 deb 与 tar.xz
+        run: |
+          VERSION="${{ needs.meta.outputs.version }}" bash packaging/linux/make-deb.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x64
+          path: dist/*
+
+  android:
+    name: Android APK / AAB
+    needs: [meta, quality]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - run: flutter pub get
+      # 通用包与分架构包是两次独立构建：--split-per-abi 不会产出 app-release.apk，
+      # 所以不能"一次构建再复制两种产物"。
+      - name: 构建通用 APK
+        run: flutter build apk --release --dart-define=WW_SERVER=${{ vars.WW_SERVER }}
+      - name: 构建分架构 APK
+        run: flutter build apk --release --split-per-abi --dart-define=WW_SERVER=${{ vars.WW_SERVER }}
+      - run: flutter build appbundle --release --dart-define=WW_SERVER=${{ vars.WW_SERVER }}
+      - name: 收集产物
+        run: |
+          set -e
+          V="${{ needs.meta.outputs.version }}"
+          S=build/app/outputs/flutter-apk
+          mkdir -p dist
+          cp "$S/app-release.apk"                        "dist/werewolf-client-$V-android-universal.apk"
+          cp "$S/app-arm64-v8a-release.apk"             "dist/werewolf-client-$V-android-arm64-v8a.apk"
+          cp "$S/app-armeabi-v7a-release.apk"           "dist/werewolf-client-$V-android-armeabi-v7a.apk"
+          cp build/app/outputs/bundle/release/app-release.aab "dist/werewolf-client-$V.aab"
+          ls -lh dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: dist/*
+
+  release:
+    name: 发布
+    needs: [meta, windows, linux, android]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
