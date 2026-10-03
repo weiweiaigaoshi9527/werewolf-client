@@ -6,6 +6,12 @@
 /// - 事件只有 7 个字段：seq / day / phase / type / actor / target / detail，
 ///   **没有独立时间戳**；actor=0 表示无主体，target=0 表示无对象（空刀、放弃、无人出局）；
 /// - `seatRoles` 是**字符串** `"1:预言家 2:狼人 ..."`，不是对象。
+
+// ⚠️ 不要按 unnecessary_brace_in_string_interps 把 `'${e}号'` 改成 `'$e号'`：
+// Dart 的插值标识符在遇到 CJK 时会整体停止解析，`'$e号'` 根本不插值、
+// 直接输出字面量 "$e号"（实测，分析器还会顺带报 "e 未被使用"）。
+// 也就是说这条 lint 在"插值紧跟中文"的场景下是错的，dart fix 会静默改坏文案。
+// ignore_for_file: unnecessary_brace_in_string_interps
 library;
 
 class ReplayEvent {

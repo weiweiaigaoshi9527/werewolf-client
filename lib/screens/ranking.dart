@@ -127,7 +127,7 @@ class _RankingScreenState extends State<RankingScreen> {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(color: me ? kAccent : kMoon, fontWeight: me ? FontWeight.bold : FontWeight.normal)),
-        subtitle: Text('${metric} · MVP ${r['mvp'] ?? 0}', style: const TextStyle(color: kDim, fontSize: 12)),
+        subtitle: Text('$metric · MVP ${r['mvp'] ?? 0}', style: const TextStyle(color: kDim, fontSize: 12)),
         onTap: () {
           final id = (r['userId'] as num?)?.toInt();
           if (id != null && !me) showWwProfile(context, id, title: '${r['nickname'] ?? ''}');

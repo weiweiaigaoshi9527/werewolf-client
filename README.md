@@ -32,7 +32,7 @@ werewolf_app/
 
 1. 启动服务端（见 `DEPLOY-server.md`）。
 2. 打开 App → 在「服务器设置」填服务端地址：
-   - 局域网：`https://192.168.x.x:8080`（保持「允许自签名证书」开启）。
+   - 局域网：`https://192.168.x.x:11111`（保持「允许自签名证书」开启）。
    - 公网：`https://你的域名`（正式证书，可关掉自签名开关）。
 3. 「测试连接」通过后「保存并进入」→ 登录/注册 → 建房或加房 → 加 AI → 开局。
 
@@ -126,7 +126,24 @@ flutter build web                # → build/web/  （Web 端不能用自签名�
 与网页版一致：首屏直接铺满全部事件、速度档 慢1200/中600/快250ms、播完再点=从头重播；
 比网页版多做：后退一帧、拖动进度条跳转、座位条随帧更新（网页版播放时座位区是不变的）。
 
-**仍待补**：后台的语音/AI 参数编辑（端点已探明，字段多且危险，暂只在网页后台做）、抽牌与结算动画。
+**本轮已补齐**：后台的语音/AI 参数编辑（`admin.dart` 第 8 分节）、抽牌与结算动画
+（`lib/animations.dart`）、逐帧回放播放器（`lib/replay_engine.dart`）。
+网页版功能侧目前只剩后台的极少数长尾配置项。
+
+## ⚠️ 不要直接跑 `dart fix --apply`
+
+本仓库大量文案是「插值紧跟中文」（`'${e}号'`、`'$timeoutMin分钟'`）。Dart 的插值标识符遇到
+CJK 会**停止解析**，`'$e号'` 不但不插值、还会原样输出字面量 `$e号`（已实测）。
+而 `unnecessary_brace_in_string_interps` 这条 lint 认为花括号多余，`dart fix --apply`
+会照着改——**改完不报错，只是中文文案全坏**。
+
+相关 lint 已在 `lib/replay_engine.dart`、`tool/replay_probe.dart` 用 `ignore_for_file` 钉住。
+要自动修复请**按 code 单跑**并跳过这一条：
+
+```powershell
+dart fix --apply --code=prefer_const_constructors
+dart fix --apply --code=curly_braces_in_flow_control_structures
+```
 
 ## 构建与验证
 

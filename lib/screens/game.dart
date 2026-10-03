@@ -60,10 +60,12 @@ class _GameScreenState extends State<GameScreen> {
     _store = context.read<AppStore>();
     // relay 字幕实时回填到发言输入框（与手动打字共存）
     _store.onVoiceRelay = (t) {
-      if (mounted) setState(() => _speech.value = TextEditingValue(
+      if (mounted) {
+        setState(() => _speech.value = TextEditingValue(
             text: _speech.text + t,
             selection: TextSelection.collapsed(offset: _speech.text.length + t.length),
           ));
+      }
     };
   }
 

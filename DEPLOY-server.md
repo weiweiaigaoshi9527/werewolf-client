@@ -9,7 +9,7 @@
 
 1. 双击 `start.bat`（会拉起语音微服务并以 HTTPS 启动游戏服务）。
 2. 查本机局域网 IP：`ipconfig`（Windows）/ `ifconfig`（mac/linux），例如 `192.168.1.169`。
-3. 各设备 App 的「服务器设置」填：`https://192.168.1.169:8080`，保持「允许自签名证书」开启。
+3. 各设备 App 的「服务器设置」填：`https://192.168.1.169:11111`，保持「允许自签名证书」开启。
 4. 麦克风语音功能要求安全上下文，HTTPS 已满足；首次访问自签名证书需在设备端放行/信任。
 
 > 局限：仅同一局域网；跨网/出远门连不上。要真正跨地互通 → 用下面的公网版。
@@ -18,7 +18,7 @@
 
 ## B. 公网 VPS + 域名 + 正式证书（推荐，跨地互通）
 
-思路：**Nginx 在边缘终结 TLS（Let's Encrypt 正式证书），反向代理到本机 8080 的 Spring 明文服务**。
+思路：**Nginx 在边缘终结 TLS（Let's Encrypt 正式证书），反向代理到本机 11111 的 Spring 明文服务**。
 这样 App 端连 `https://你的域名`（正规证书，无需自签名开关），且证书自动续期。
 
 ### 1. 准备
@@ -26,10 +26,10 @@
 - VPS 上装 JDK 21、Nginx、certbot。
 - 把 `target/werewolf-online-0.1.0-SNAPSHOT.jar` 和 `data/` 传到 `/opt/werewolf/`。
 
-### 2. 让 Spring 以明文 HTTP 跑在 127.0.0.1:8080（TLS 交给 Nginx）
+### 2. 让 Spring 以明文 HTTP 跑在 127.0.0.1:11111（TLS 交给 Nginx）
 用默认 profile（不加 `--spring.profiles.active=https`），只监听本机即可：
 ```
-java -jar /opt/werewolf/werewolf-online-0.1.0-SNAPSHOT.jar --server.port=8080
+java -jar /opt/werewolf/werewolf-online-0.1.0-SNAPSHOT.jar --server.port=11111
 ```
 （可选 systemd 常驻，见 §4。）
 
@@ -54,7 +54,7 @@ server {
 
     # REST + 静态
     location / {
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://127.0.0.1:11111;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -62,7 +62,7 @@ server {
 
     # WebSocket：/ws 与 /ws/voice 需要升级头 + 长连接超时
     location /ws {
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://127.0.0.1:11111;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -71,7 +71,7 @@ server {
         proxy_send_timeout 3600s;
     }
     location /ws/voice {
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://127.0.0.1:11111;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -95,7 +95,7 @@ Description=Werewolf Online
 After=network.target
 [Service]
 WorkingDirectory=/opt/werewolf
-ExecStart=/usr/bin/java -jar /opt/werewolf/werewolf-online-0.1.0-SNAPSHOT.jar --server.port=8080
+ExecStart=/usr/bin/java -jar /opt/werewolf/werewolf-online-0.1.0-SNAPSHOT.jar --server.port=11111
 Restart=always
 Environment=VOICE_ENABLED=true
 [Install]

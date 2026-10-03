@@ -60,7 +60,7 @@ void main() {
       addTearDown(tester.view.reset);
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
-          body: SettleReveal(winner: '好人阵营', seats: [
+          body: SettleReveal(winner: '好人阵营', seats: const [
             {'seat': 1, 'role': '预言家', 'alive': true},
             {'seat': 2, 'role': '狼人', 'alive': false},
           ]),

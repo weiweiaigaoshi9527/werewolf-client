@@ -234,8 +234,8 @@ class _OverviewState extends _AdminSectionState<_Overview> {
               ),
             ),
             const SectionTitle('危险运维'),
-            Text('这些操作会直接影响正在游玩的真人，务必先确认。',
-                style: const TextStyle(color: kDim, fontSize: 12)),
+            const Text('这些操作会直接影响正在游玩的真人，务必先确认。',
+                style: TextStyle(color: kDim, fontSize: 12)),
             const SizedBox(height: 8),
             Wrap(spacing: 10, runSpacing: 10, children: [
               OutlinedButton.icon(

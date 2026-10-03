@@ -119,7 +119,7 @@ class _BoardEditorScreenState extends State<BoardEditorScreen> {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(color: kPanel, borderRadius: BorderRadius.circular(10), border: Border.all(color: err == null ? kBorder : kBlood)),
             child: Text(
-              '合计 $_total 人 · 狼人 $_wolves · 好人 ${_total - _wolves}' + (err != null ? '  ⚠️ $err' : '  ✅ 合法'),
+              '合计 $_total 人 · 狼人 $_wolves · 好人 ${_total - _wolves}${err != null ? '  ⚠️ $err' : '  ✅ 合法'}',
               style: TextStyle(color: err == null ? kGreen : kBlood, fontWeight: FontWeight.bold),
             ),
           ),

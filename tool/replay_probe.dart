@@ -9,6 +9,9 @@
 // 纯 Dart（不 import Flutter）：replay_engine 本身就是无 Flutter 依赖的纯逻辑层。
 // CLI 探针就是要往 stdout 打进度，故豁免 avoid_print。
 // ignore_for_file: avoid_print
+// ⚠️ 也别按 unnecessary_brace_in_string_interps 去掉 `'${timeoutMin}分钟'` 的花括号：
+// Dart 插值标识符遇到 CJK 会停止解析，`'$timeoutMin分钟'` 不插值、直接输出字面量。
+// ignore_for_file: unnecessary_brace_in_string_interps
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -139,7 +142,7 @@ Future<void> main() async {
   final fin = p.state;
   print('折帧完成：存活 ${fin.alive.length}/${seats.length}，警长=${fin.sheriff ?? '无'}，over=${fin.over}，winner=${fin.winner}');
   print('存活曲线：${aliveTrace.join('→')}');
-  print('事件类型分布：' + events.fold(<String, int>{}, (m, e) { m[e.type] = (m[e.type] ?? 0) + 1; return m; }).toString());
+  print('事件类型分布：${events.fold(<String, int>{}, (m, e) { m[e.type] = (m[e.type] ?? 0) + 1; return m; })}');
   if (!fin.over || fin.winner.isEmpty) {
     stderr.writeln('最后一帧不是 GAME_OVER，折帧终点与顶层 winner 不一致');
     exitCode = 1;

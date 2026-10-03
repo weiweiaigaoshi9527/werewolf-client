@@ -41,9 +41,14 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       - run: flutter pub get
-      - run: flutter analyze
-      # 只跑离线套件：live 契约测试需要可达的服务端，靠 WW_LIVE_BASE 自行开启
-      - run: flutter test test/config_test.dart test/voice_codec_test.dart test/widget_test.dart
+      # 先做工作流自检：引用的路径是否存在、版本号能否抽出、离线套件规模对不对。
+      # 这类错误没必要烧一次真构建才发现。
+      - run: dart run tool/check_workflow.dart
+      - run: flutter analyze --no-pub
+      # 跑整个离线套件：live 契约测试在没有 WW_LIVE_* 时会自动 skip，
+      # 所以不需要（也不应该）在这里填真实服务端凭据。
+      # 之前这里只列了 3 个文件，回放/动画/后台/房间/WS 派发全都不在 CI 覆盖内。
+      - run: flutter test
 
   windows:
     name: Windows x64

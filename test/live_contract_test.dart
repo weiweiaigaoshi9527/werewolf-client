@@ -379,7 +379,7 @@ void main() {
       expect(url, startsWith('/uploads/'), reason: '服务端给的是相对路径，客户端必须自己拼 baseUrl');
       expect(v['id'], store.user?['id']);
 
-      final probe = await http.get(Uri.parse('${base}$url'));
+      final probe = await http.get(Uri.parse('$base$url'));
       expect(probe.statusCode, 200, reason: '/uploads/** 必须可匿名访问，否则头像显示不出来');
       expect(probe.headers['content-type'], contains('image/png'));
       debugPrint('[live] avatar $url (${probe.contentLength} bytes)');
