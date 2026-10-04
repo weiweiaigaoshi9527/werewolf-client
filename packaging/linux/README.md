@@ -17,7 +17,12 @@ cd /opt/wsw/werewolf_app
 # 2) 工具链（Ubuntu 22.04）
 sudo apt-get update
 sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev \
-  libglu1-mesa-dev libstdc++-12-dev dpkg-dev xz-utils git unzip curl
+  libglu1-mesa-dev libstdc++-12-dev dpkg-dev xz-utils git unzip curl \
+  libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+#    最后两个是 audioplayers 的 Linux 后端（GStreamer）必需，缺了 CMake 会直接失败；
+#    在 GitHub 的 runner 镜像上它们还可能因预装包导致依赖解析失败
+#    （libgstreamer1.0-dev Depends: libunwind-dev → held broken packages），
+#    因此 CI 里 Linux 是在干净的 ubuntu:22.04 容器中构建的。
 
 # 3) Flutter（与 CI 固定同一版本，避免"本机能编 CI 不能编"）
 git clone --depth 1 --branch 3.24.5 https://github.com/flutter/flutter.git /opt/flutter
@@ -58,7 +63,9 @@ werewolf-client            # 或从应用菜单点「狼人杀」
   因为 `lib/libapp.so`、`lib/libflutter_linux_gtk.so` 与 `data/` 是相对定位的）。
 - 生成 `.desktop`（名称「狼人杀」、`Categories=Game;Network;`、注册 `x-scheme-handler/werewolf`）
   与 hicolor 图标（用 `packaging/linux/icon-512.png`）。
-- `DEBIAN/control` 的 Depends 给的是 `libgtk-3-0, libglu1-mesa9, libstdc++6`；
+- `DEBIAN/control` 的 Depends 给的是 `libgtk-3-0, libglu1-mesa, libstdc++6,
+  libgstreamer1.0-0, libgstreamer-plugins-base1.0-0, gstreamer1.0-plugins-good`
+  （最后三项是音效所需：对局音效走 GStreamer 播放运行时合成的 WAV）；
   `Architecture` 取 `dpkg --print-architecture`，`Installed-Size` 按实际体积算。
 - 同时产出便携 `tar.xz`，给不方便装包的环境。
 
