@@ -42,7 +42,7 @@ MimeType=x-scheme-handler/werewolf;
 EOF
 
 ARCH="$(dpkg --print-architecture)"
-DEPENDS="libgtk-3-0, libglu1-mesa, libstdc++6"
+DEPENDS="libgtk-3-0, libglu1-mesa, libstdc++6, libgstreamer1.0-0, libgstreamer-plugins-base1.0-0, gstreamer1.0-plugins-good"
 SIZE=$(( $(du -sk "$STAGE" | cut -f1) ))
 
 cat > "$STAGE/DEBIAN/control" <<EOF
