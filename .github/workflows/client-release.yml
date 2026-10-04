@@ -91,7 +91,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            git curl ca-certificates unzip xz-utils \
+            git curl ca-certificates unzip xz-utils jq \
             clang cmake ninja-build pkg-config libgtk-3-dev libglu1-mesa-dev \
             libstdc++-12-dev liblzma-dev patchelf dpkg-dev \
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
