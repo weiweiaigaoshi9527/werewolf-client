@@ -31,6 +31,7 @@ Future<void> main() async {
   final api = ApiClient(config);
   api.token = await ServerConfig.loadToken();
   final store = AppStore(api)..token = api.token;
+  await store.sfx.load(); // 音效开关状态要早于第一帧就绪，否则会先响一声再被关掉
   runApp(ChangeNotifierProvider.value(value: store, child: WerewolfApp(config: config, store: store)));
 }
 

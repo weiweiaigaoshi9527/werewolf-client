@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -5,6 +8,49 @@ import '../api.dart';
 import '../store.dart';
 import '../theme.dart';
 import 'common.dart';
+
+/// 批量用户操作的请求体（纯函数，便于单测）。
+///
+/// op 必须是后端 `switch` **精确匹配**的字面量：`ban` / `admin` / `vip` / `gold` / `delete`。
+/// 注意：网页版批量删除发的是 `"del"`，而后端只认 `"delete"`——本端必须发 `"delete"`。
+/// value：ban/admin 取 0|1，vip 取等级 0-3，gold 取增减额（可负）；days 供 vip 使用。
+Map<String, dynamic> batchUserBody(List<int> ids, String op, {int value = 0, int days = 30}) {
+  return {
+    'ids': ids,
+    'op': op,
+    'value': value,
+    'days': days,
+  };
+}
+
+/// 兑换码创建的请求体（纯函数，便于单测）。
+///
+/// 可选项为空（null 或空串）时**不下发该键**；gold/exp/itemDefId/maxUses 始终下发。
+/// expireAt 必须是 ISO 本地日期时间（如 2026-12-31T23:59:00），后端用 `LocalDateTime.parse`
+/// 解析；空串/null 表示永不过期。
+Map<String, dynamic> redeemBody({
+  String? code,
+  required int gold,
+  required int exp,
+  required int itemDefId,
+  required int maxUses,
+  String? expireAt,
+  String? note,
+}) {
+  return {
+    if (code != null && code.isNotEmpty) 'code': code,
+    'gold': gold,
+    'exp': exp,
+    'itemDefId': itemDefId,
+    'maxUses': maxUses,
+    if (expireAt != null && expireAt.isNotEmpty) 'expireAt': expireAt,
+    if (note != null && note.isNotEmpty) 'note': note,
+  };
+}
+
+/// 把日期格式化成 `yyyy-MM-dd`（配合当日 23:59:59 拼出后端要的 ISO 本地日期时间）。
+String isoDay(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
 /// 后台管理（App 版）。对齐网页 admin.js 的主要操作，端点与字段逐字照抄后端。
 ///
@@ -300,6 +346,10 @@ class _Users extends _AdminSection {
 class _UsersState extends _AdminSectionState<_Users> {
   final _kw = TextEditingController();
 
+  /// 批量选择模式：勾选多个用户后统一 POST /api/admin/users/batch。
+  bool _selectMode = false;
+  final Set<int> _selected = {};
+
   @override
   String get listPath => '/api/admin/users';
 
@@ -406,11 +456,155 @@ class _UsersState extends _AdminSectionState<_Users> {
     }
   }
 
+  /// 导出全部用户为 CSV：后端直接回原始字节（UTF-8 BOM），用 file_picker 落盘。
+  /// file_picker 8.1.2 的 saveFile 支持 bytes 参数；个别平台只回路径不落盘，
+  /// 因此若路径不存在或文件为空，再用 dart:io 的 File 兜底写一次。
+  Future<void> _exportCsv() async {
+    final store = context.read<AppStore>();
+    try {
+      final bytes = await store.api.getBytes('/api/admin/ops/export/users');
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: '导出用户 CSV',
+        fileName: 'users.csv',
+        type: FileType.custom,
+        allowedExtensions: ['csv'],
+        bytes: Uint8List.fromList(bytes),
+      );
+      if (path == null) return; // 用户取消
+      try {
+        final f = File(path);
+        if (!await f.exists() || (await f.length()) == 0) {
+          await f.writeAsBytes(bytes, flush: true);
+        }
+      } catch (_) {}
+      if (mounted) snack(context, '已导出用户 CSV：$path');
+    } on AppError catch (e) {
+      if (mounted) snack(context, e.message, error: true);
+    } catch (e) {
+      if (mounted) snack(context, '导出失败：$e', error: true);
+    }
+  }
+
+  /// 统一提交批量操作，并用 snack 汇报「已完成 done，跳过 skipped」。
+  Future<void> _batchSend(String op, {int value = 0, int days = 30}) async {
+    final ids = _selected.toList();
+    if (ids.isEmpty) {
+      snack(context, '请先勾选要操作的用户', error: true);
+      return;
+    }
+    final store = context.read<AppStore>();
+    try {
+      final r = await store.api.post('/api/admin/users/batch', batchUserBody(ids, op, value: value, days: days));
+      if (!mounted) return;
+      setState(() {
+        _selected.clear();
+        _selectMode = false;
+      });
+      snack(context, '已完成 ${r['done'] ?? 0}，跳过 ${r['skipped'] ?? 0}');
+      await load();
+    } on AppError catch (e) {
+      if (mounted) snack(context, e.message, error: true);
+    }
+  }
+
+  /// 批量操作菜单：ban/admin 用 value 0/1 区分封禁与解封、设权与撤权；vip 取等级+天数；
+  /// gold 取增减额；delete 走 danger 二次确认（确认词「删除」），op 字面量固定为 "delete"。
+  Future<void> _batchMenu() async {
+    if (_selected.isEmpty) {
+      snack(context, '请先勾选要操作的用户', error: true);
+      return;
+    }
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: kPanel,
+      builder: (c) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            ListTile(
+              title: Text('已选 ${_selected.length} 人（单次上限 500）',
+                  style: const TextStyle(color: kMoon, fontWeight: FontWeight.bold)),
+            ),
+            ListTile(leading: const Icon(Icons.shield_outlined), title: const Text('封禁'), onTap: () => Navigator.pop(c, 'ban')),
+            ListTile(leading: const Icon(Icons.shield_moon_outlined), title: const Text('解除封禁'), onTap: () => Navigator.pop(c, 'unban')),
+            ListTile(leading: const Icon(Icons.admin_panel_settings_outlined), title: const Text('设为管理员'), onTap: () => Navigator.pop(c, 'admin')),
+            ListTile(leading: const Icon(Icons.remove_moderator_outlined), title: const Text('取消管理员'), onTap: () => Navigator.pop(c, 'unadmin')),
+            ListTile(leading: const Icon(Icons.workspace_premium_outlined), title: const Text('调 VIP（等级 0-3）'), onTap: () => Navigator.pop(c, 'vip')),
+            ListTile(leading: const Icon(Icons.attach_money), title: const Text('增减金币（可为负）'), onTap: () => Navigator.pop(c, 'gold')),
+            ListTile(
+              leading: const Icon(Icons.delete_forever_outlined, color: kBlood),
+              title: const Text('删除（级联物理删除）', style: TextStyle(color: kBlood)),
+              onTap: () => Navigator.pop(c, 'delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (choice == null || !mounted) return;
+    switch (choice) {
+      case 'ban':
+        await _batchSend('ban', value: 1);
+      case 'unban':
+        await _batchSend('ban', value: 0);
+      case 'admin':
+        await _batchSend('admin', value: 1);
+      case 'unadmin':
+        await _batchSend('admin', value: 0);
+      case 'vip':
+        final lv = await _prompt('VIP 等级（0=取消，1-3）', hint: '0-3', numeric: true, initial: '1');
+        if (lv == null) return;
+        final days = await _prompt('天数（填 0 表示永久）', hint: '如 30', numeric: true, initial: '30');
+        if (days == null) return;
+        await _batchSend('vip', value: int.tryParse(lv) ?? 0, days: int.tryParse(days) ?? 30);
+      case 'gold':
+        final d = await _prompt('每人金币增减量（可为负）', hint: '如 1000 或 -500', numeric: true);
+        if (d == null) return;
+        await _batchSend('gold', value: int.tryParse(d) ?? 0);
+      case 'delete':
+        if (!await danger('批量删除 ${_selected.length} 个账号',
+            '级联物理删除：战绩/好友/私聊/流水/背包/工单/兑换记录全部清除，且撤销其会话。不可恢复。', word: '删除')) return;
+        await _batchSend('delete');
+    }
+  }
+
+  /// 单个用户条目：批量模式下显示勾选框，普通模式下点击弹出操作菜单。
+  Widget _userTile(Map u) {
+    final id = (u['id'] as num).toInt();
+    final checked = _selected.contains(id);
+    void toggle() => setState(() => checked ? _selected.remove(id) : _selected.add(id));
+    return ListTile(
+      dense: true,
+      leading: _selectMode
+          ? Checkbox(value: checked, activeColor: kAccent, onChanged: (_) => toggle())
+          : null,
+      title: Text('${u['nickname']}  @${u['username']}',
+          maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13.5, color: kText)),
+      subtitle: Text(
+        'Lv.${u['level']} · 💰${u['gold']} · VIP${u['vip'] ?? 0}'
+        '${u['admin'] == true ? ' · 管理员' : ''}${u['banned'] == true ? ' · 已封禁' : ''}${u['online'] == true ? ' · 在线' : ''}',
+        style: TextStyle(fontSize: 11.5, color: u['banned'] == true ? kBlood : kDim),
+      ),
+      trailing: _selectMode ? null : const Icon(Icons.more_vert, color: kDim),
+      onTap: _selectMode ? toggle : () => _menu(u),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        actions: [refreshButton()],
+        actions: [
+          IconButton(tooltip: '导出 CSV', onPressed: _exportCsv, icon: const Icon(Icons.file_download_outlined)),
+          IconButton(
+            tooltip: _selectMode ? '退出批量' : '批量选择',
+            onPressed: () => setState(() {
+              _selectMode = !_selectMode;
+              if (!_selectMode) _selected.clear();
+            }),
+            icon: Icon(_selectMode ? Icons.close : Icons.checklist),
+          ),
+          refreshButton(),
+        ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(56),
           child: Padding(
@@ -428,21 +622,29 @@ class _UsersState extends _AdminSectionState<_Users> {
           ),
         ),
       ),
+      bottomNavigationBar: _selectMode
+          ? SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 6, 14, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text('已选 ${_selected.length} / ${rows.length} 人',
+                          style: const TextStyle(color: kMoon, fontSize: 13)),
+                    ),
+                    FilledButton.icon(
+                      onPressed: _selected.isEmpty ? null : _batchMenu,
+                      icon: const Icon(Icons.playlist_add_check, size: 18),
+                      label: const Text('批量操作'),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : null,
       body: wrap(ListView(
         children: [
-          for (final r in rows)
-            ListTile(
-              dense: true,
-              title: Text('${r['nickname']}  @${r['username']}',
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13.5, color: kText)),
-              subtitle: Text(
-                'Lv.${r['level']} · 💰${r['gold']} · VIP${r['vip'] ?? 0}'
-                '${r['admin'] == true ? ' · 管理员' : ''}${r['banned'] == true ? ' · 已封禁' : ''}${r['online'] == true ? ' · 在线' : ''}',
-                style: TextStyle(fontSize: 11.5, color: r['banned'] == true ? kBlood : kDim),
-              ),
-              trailing: const Icon(Icons.more_vert, color: kDim),
-              onTap: () => _menu(r as Map),
-            ),
+          for (final r in rows) _userTile(r as Map),
         ],
       )),
     );
@@ -624,43 +826,78 @@ class _RedeemState extends _AdminSectionState<_Redeem> {
   Future<void> _create() async {
     final code = TextEditingController();
     final gold = TextEditingController(text: '100');
+    final exp = TextEditingController(text: '0');
+    final item = TextEditingController(text: '0');
     final uses = TextEditingController(text: '1');
     final note = TextEditingController();
+    DateTime? expire; // 选中的过期日（当日 23:59:59 失效），null 表示永不过期
     final ok = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: kPanel,
-        title: const Text('新建兑换码'),
-        content: SizedBox(
-          width: 400,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: code, decoration: const InputDecoration(labelText: '码（留空由服务端生成）')),
-              TextField(controller: gold, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: '金币')),
-              TextField(controller: uses, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: '可用次数')),
-              TextField(controller: note, decoration: const InputDecoration(labelText: '备注（可选）')),
-              const Text('过期时间不填即永不过期；exp / itemDefId 需要时请在网页后台设置。',
-                  style: TextStyle(fontSize: 11.5, color: kDim)),
-            ],
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (_, setLocal) => AlertDialog(
+          backgroundColor: kPanel,
+          title: const Text('新建兑换码'),
+          content: SizedBox(
+            width: 400,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(controller: code, decoration: const InputDecoration(labelText: '码（留空由服务端生成）')),
+                  TextField(controller: gold, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: '金币')),
+                  TextField(controller: exp, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: '经验')),
+                  TextField(controller: item, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: '道具ID（0=不发道具）')),
+                  TextField(controller: uses, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: '可用次数')),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(expire == null ? '过期时间：永不过期' : '过期时间：${isoDay(expire!)} 23:59:59'),
+                    subtitle: const Text('留空即永久；选日期后当日 23:59:59 失效'),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextButton(
+                          onPressed: () async {
+                            final now = DateTime.now();
+                            final picked = await showDatePicker(
+                              context: dialogCtx,
+                              initialDate: expire ?? now,
+                              firstDate: now,
+                              lastDate: DateTime(now.year + 5, 12, 31),
+                            );
+                            if (picked != null) setLocal(() => expire = picked);
+                          },
+                          child: const Text('选择日期'),
+                        ),
+                        if (expire != null)
+                          IconButton(onPressed: () => setLocal(() => expire = null), icon: const Icon(Icons.clear, size: 18)),
+                      ],
+                    ),
+                  ),
+                  TextField(controller: note, decoration: const InputDecoration(labelText: '备注（可选）')),
+                ],
+              ),
+            ),
           ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('创建')),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('创建')),
-        ],
       ),
     );
     if (ok != true) return;
     if (!mounted) return;
     final store = context.read<AppStore>();
     try {
-      final r = await store.api.post('/api/admin/redeem', {
-        if (code.text.trim().isNotEmpty) 'code': code.text.trim(),
-        'gold': int.tryParse(gold.text) ?? 0,
-        'maxUses': int.tryParse(uses.text) ?? 1,
-        if (note.text.trim().isNotEmpty) 'note': note.text.trim(),
-      });
+      final r = await store.api.post('/api/admin/redeem', redeemBody(
+        code: code.text.trim(),
+        gold: int.tryParse(gold.text) ?? 0,
+        exp: int.tryParse(exp.text) ?? 0,
+        itemDefId: int.tryParse(item.text) ?? 0,
+        maxUses: int.tryParse(uses.text) ?? 1,
+        expireAt: expire == null ? null : '${isoDay(expire!)}T23:59:59',
+        note: note.text.trim(),
+      ));
       if (!mounted) return;
       snack(context, '已生成兑换码 ${r['code']}');
       await load();

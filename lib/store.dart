@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'api.dart';
 import 'config.dart';
 import 'models.dart';
+import 'sfx.dart';
 import 'voice.dart';
 import 'ws.dart';
 
@@ -247,6 +248,7 @@ class AppStore extends ChangeNotifier {
         _closeVoice();
         break;
       case 'game.chat':
+        unawaited(sfx.play('msg'));
         gameChat.add(WwChatLine(
           name: '${m['name'] ?? ''}',
           text: '${m['text'] ?? ''}',
@@ -263,6 +265,7 @@ class AppStore extends ChangeNotifier {
         livePrivate.add(m);
         _cap(livePrivate, 100);
         unreadMessages++;
+        unawaited(sfx.play('msg'));
         _notify('${m['fromName'] ?? '好友'}：${m['content'] ?? ''}');
         break;
       case 'friend.request':
@@ -329,6 +332,8 @@ class AppStore extends ChangeNotifier {
   }
 
   // ---------- 实时通知与未读 ----------
+  /// 对局音效（与网页版 SFX 同一套音），开关状态持久化。
+  final Sfx sfx = Sfx();
   final List<WwNotice> notices = [];
   final List<String> roomFeed = [];
   final List<WwChatLine> gameChat = [];
@@ -346,6 +351,14 @@ class AppStore extends ChangeNotifier {
   }
 
   void dismissNotice(int id) => notices.removeWhere((n) => n.id == id);
+
+  /// 切换音效开关（与网页版 btn-sfx 同语义），并通知界面刷新图标。
+  Future<bool> toggleSfx() async {
+    final on = await sfx.toggle();
+    if (on) unawaited(sfx.play('click')); // 开启时给一声即时反馈
+    notifyListeners();
+    return on;
+  }
 
   /// 未读以服务端聚合为准（打开好友页、登录后各拉一次）。
   Future<void> refreshUnread() async {
@@ -475,6 +488,9 @@ class AppStore extends ChangeNotifier {
 
   @override
   void dispose() {
+    try {
+      sfx.dispose();
+    } catch (_) {}
     _disconnectWs();
     _closeVoice();
     super.dispose();

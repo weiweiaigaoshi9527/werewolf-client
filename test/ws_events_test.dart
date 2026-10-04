@@ -11,7 +11,11 @@ import 'package:werewolf_app/store.dart';
 void main() {
   AppStore newStore() {
     SharedPreferences.setMockInitialValues({});
-    return AppStore(ApiClient(ServerConfig(baseUrl: 'https://unit.test.invalid:11111')));
+    final s = AppStore(ApiClient(ServerConfig(baseUrl: 'https://unit.test.invalid:11111')));
+    // 纯派发测试不跑 UI：关掉音效，避免 Sfx.play -> AudioPlayer() 触达 EventChannel
+    // （测试绑定未初始化时会异步抛出，逃逸出 try/catch）。
+    s.sfx.enabled = false;
+    return s;
   }
 
   group('布告栏 room.event', () {

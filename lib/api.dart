@@ -83,6 +83,30 @@ class ApiClient {
     }
   }
 
+  /// 读取原始字节（如后台的用户 CSV 导出：GET /api/admin/ops/export/users）。
+  /// 与 JSON 接口不同，这里不做 jsonDecode——成功直接回传 bodyBytes；
+  /// 只有失败时才尝试解析 JSON 里的 error 字段，好把服务端的中文原因透出给用户。
+  Future<List<int>> getBytes(String path) async {
+    final uri = config.api(path);
+    http.Response res;
+    try {
+      res = await _client.get(uri, headers: _headers).timeout(const Duration(seconds: 15));
+    } on TimeoutException {
+      throw AppError('连接服务器超时，请检查地址与网络');
+    } catch (e) {
+      throw AppError('无法连接服务器：$e');
+    }
+    if (res.statusCode >= 400) {
+      String msg = '请求失败 (${res.statusCode})';
+      try {
+        final decoded = jsonDecode(res.body);
+        if (decoded is Map && decoded['error'] != null) msg = decoded['error'].toString();
+      } catch (_) {}
+      throw AppError(msg);
+    }
+    return res.bodyBytes;
+  }
+
   Future<dynamic> _send(String method, String path, [Object? body]) async {
     final uri = config.api(path);
     http.Response res;

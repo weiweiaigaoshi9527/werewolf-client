@@ -78,6 +78,11 @@ class LobbyScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('村庄大厅'),
         actions: [
+          IconButton(
+            tooltip: store.sfx.enabled ? '关闭音效' : '开启音效',
+            icon: Icon(store.sfx.enabled ? Icons.volume_up : Icons.volume_off),
+            onPressed: () => store.toggleSfx(),
+          ),
           IconButton(tooltip: '服务器设置', icon: const Icon(Icons.dns), onPressed: () => store.clearServer()),
           IconButton(tooltip: '退出登录', icon: const Icon(Icons.logout), onPressed: () => store.logout()),
         ],
