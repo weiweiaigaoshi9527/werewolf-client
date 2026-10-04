@@ -79,16 +79,23 @@ jobs:
     name: Linux x64（deb + 便携包）
     needs: [meta, quality]
     runs-on: ubuntu-22.04
+    # 在干净的 ubuntu:22.04 容器里构建，而不是直接用 runner 镜像：
+    # 宿主 runner 镜像启用了 packages.microsoft.com 等第三方源、并预装了一批包，
+    # 会让 libgstreamer1.0-dev（audioplayers 的 Linux 后端依赖）解析失败——
+    #   libgstreamer1.0-dev : Depends: libunwind-dev
+    #   E: Unable to correct problems, you have held broken packages.
+    # 干净容器里没有任何预装包，这些依赖能从 jammy 仓库正常解出。
+    container: ubuntu:22.04
     steps:
-      - uses: actions/checkout@v4
-      - name: 安装原生工具链
+      - name: 安装构建依赖
         run: |
-          sudo apt-get update
-          # gstreamer-1.0 是 audioplayers 的 Linux 后端所需（缺了 CMake 在
-          # audioplayers_linux/linux/CMakeLists.txt 的 pkg_check_modules 处直接失败）。
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev \
-            libglu1-mesa-dev libstdc++-12-dev patchelf dpkg-dev xz-utils \
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            git curl ca-certificates unzip xz-utils \
+            clang cmake ninja-build pkg-config libgtk-3-dev libglu1-mesa-dev \
+            libstdc++-12-dev liblzma-dev patchelf dpkg-dev \
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+      - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
