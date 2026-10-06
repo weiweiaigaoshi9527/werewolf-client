@@ -6,14 +6,8 @@ class ServerConfig {
   static const kInsecure = 'allow_insecure_tls';
   static const kToken = 'auth_token';
 
-  /// 内置服务器地址预设：公网主服 + 本机调试服。客户端在“连接服务器”页一键选择。
-  /// 服务端端口已从 8080 全线迁移到 11111（HTTPS 自签证书），此处必须与 application-https.yml 一致。
+  /// 服务端端口：已从 8080 全线迁移到 11111（HTTPS 自签证书），与 application-https.yml 一致。
   static const int kDefaultPort = 11111;
-  static const List<ServerPreset> presets = [
-    ServerPreset('公网服务器（weiwei）', 'https://weiwei.hisuperwan.com:11111', true),
-    ServerPreset('公网服务器（dxpc）', 'https://dxpc.ddns.net:11111', true),
-    ServerPreset('本地服务器', 'https://localhost:11111', true),
-  ];
 
   /// 打包时可用 `--dart-define=WW_SERVER=https://你的域名:11111` 预置服务器地址，
   /// 装好即进登录页，省去首次「服务器设置」。未预置则仍走手工设置页。
@@ -72,12 +66,4 @@ class ServerConfig {
       await p.setString(kToken, token);
     }
   }
-}
-
-/// 服务器地址预设项。
-class ServerPreset {
-  final String label;
-  final String url;
-  final bool insecure; // 自签证书场景默认允许不安全 TLS
-  const ServerPreset(this.label, this.url, this.insecure);
 }

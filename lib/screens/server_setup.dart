@@ -77,35 +77,10 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                       keyboardType: TextInputType.url,
                       decoration: const InputDecoration(
                         labelText: '服务器地址',
-                        hintText: 'https://game.example.com',
+                        hintText: 'https://你的域名:${ServerConfig.kDefaultPort}',
                       ),
                     ),
                     const SizedBox(height: 10),
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text('常用地址：', style: TextStyle(color: kDim, fontSize: 12.5)),
-                    ),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final p in ServerConfig.presets)
-                          ActionChip(
-                            avatar: const Icon(Icons.dns_outlined, size: 16),
-                            label: Text(p.label, style: const TextStyle(fontSize: 13)),
-                            onPressed: () {
-                              setState(() {
-                                _url.text = p.url;
-                                _insecure = p.insecure;
-                                _msg = '已填入 ${p.label}，可点“测试连接”验证';
-                                _ok = false;
-                              });
-                            },
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       dense: true,

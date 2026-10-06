@@ -20,13 +20,11 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('未配置服务器时落在「连接你的服务器」页并列出全部预设', (tester) async {
+  testWidgets('未配置服务器时落在「连接你的服务器」页，且不再有预设地址', (tester) async {
     await pumpApp(tester, ServerConfig());
     expect(find.text('连接你的服务器'), findsOneWidget);
     expect(find.text('服务器地址'), findsOneWidget);
-    for (final p in ServerConfig.presets) {
-      expect(find.text(p.label), findsOneWidget, reason: '预设 ${p.label} 未渲染');
-    }
+    expect(find.text('常用地址：'), findsNothing, reason: '预设服务器已移除');
     expect(find.text('保存并进入'), findsOneWidget);
   });
 

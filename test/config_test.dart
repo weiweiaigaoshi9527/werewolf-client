@@ -2,15 +2,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:werewolf_app/config.dart';
 
 void main() {
-  group('服务器地址预设', () {
-    test('所有预设都必须是迁移后的 11111 端口（历史上曾长期写死 8080）', () {
-      expect(ServerConfig.presets, isNotEmpty);
-      for (final p in ServerConfig.presets) {
-        expect(p.url, contains(':${ServerConfig.kDefaultPort}'), reason: '预设 ${p.label} 端口未迁移');
-        expect(p.url, isNot(contains(':8080')), reason: '预设 ${p.label} 仍是废弃的 8080');
-        expect(p.url, startsWith('https://'));
-        expect(p.insecure, isTrue, reason: '自签证书场景默认要放行不安全 TLS');
-      }
+  group('默认端口', () {
+    test('仍是迁移后的 11111（历史上曾长期写死 8080）', () {
+      expect(ServerConfig.kDefaultPort, 11111);
     });
   });
 
