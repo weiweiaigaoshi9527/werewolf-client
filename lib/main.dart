@@ -15,6 +15,7 @@ import 'screens/login.dart';
 import 'screens/home_shell.dart';
 import 'screens/room.dart';
 import 'screens/game.dart';
+import 'screens/scene3d_view.dart';
 
 /// 局域网自签证书调试：忽略证书校验。公网正式证书下无需（可在设置里关掉“允许不安全连接”）。
 class _InsecureOverrides extends HttpOverrides {
@@ -37,6 +38,7 @@ Future<void> main() async {
   await appearance.load(); // 外观（主题/强调色/字号/密度/动效/背景）同样要早于第一帧
   await i18n.load(); // 语言（ww_lang）也要早于第一帧，否则会先闪一帧中文再切走
   await bgm.load(); // 背景音乐播放列表（ww_bgm）：只读回列表，不自动播放
+  await scene3dMode.load(); // 3D 视角开关（ww_mode_3d）：与网页端一样在进入前恢复
   runApp(ChangeNotifierProvider.value(value: store, child: WerewolfApp(config: config, store: store)));
 }
 
