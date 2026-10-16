@@ -7,6 +7,7 @@ import '../animations.dart';
 import '../api.dart';
 import '../feed_filter.dart';
 import '../hotkeys.dart';
+import '../marks.dart';
 import '../models.dart';
 import '../sfx.dart';
 import '../store.dart';
@@ -189,6 +190,99 @@ class _GameScreenState extends State<GameScreen> {
     }
   }
 
+  // ---------------- 座位标记（本地、仅自己可见、按房间持久化） ----------------
+
+  /// 快捷键 M：循环推进「我下一位玩家」的标记。
+  /// 座位下标口径与网页版 ux.js 一致：`(mySeatIdx + 1) % seats.length`；
+  /// 找不到本人座位时 mySeatIdx = -1，于是落到 0 号（同样是网页版的行为）。
+  Future<void> _cycleNextSeatMark() async {
+    final seats = (_store.game?['seats'] as List?) ?? const [];
+    if (seats.isEmpty) return;
+    final mySeat = _store.game?['mySeat'];
+    final idx = seats.indexWhere((s) => s is Map && s['seat'] == mySeat);
+    final next = seats[(idx + 1) % seats.length];
+    final seat = next is Map ? next['seat'] : null;
+    if (seat is num) await _store.cycleMark(seat.toInt());
+  }
+
+  /// 标记面板：与网页版右侧「标记」面板同一份数据（点一次循环一级），另有「清空标记」。
+  /// 数据只在本地，服务端与其它玩家都看不到。
+  Future<void> _showMarkers() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: kPanel,
+      showDragHandle: true,
+      builder: (ctx) => Consumer<AppStore>(
+        builder: (ctx, store, _) {
+          final seats = (store.game?['seats'] as List?) ?? const [];
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text('🚩 座位标记',
+                            style: TextStyle(color: kMoon, fontWeight: FontWeight.bold)),
+                      ),
+                      TextButton(onPressed: () => store.clearMarks(), child: const Text('清空标记')),
+                    ],
+                  ),
+                  const Text('只有你自己看得到，按房间保存在本机',
+                      style: TextStyle(color: kDim, fontSize: 12)),
+                  const SizedBox(height: 8),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 360),
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        for (final s in seats.cast<Map>()) _markRow(store, s),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _markRow(AppStore store, Map s) {
+    final seat = (s['seat'] as num?)?.toInt() ?? 0;
+    final lvl = store.marks[seat] ?? 0;
+    final alive = s['alive'] != false;
+    final c = markColor(lvl);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text('$seat号 ${s['nickname'] ?? ''}${alive ? '' : '（出局）'}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: alive ? kText : kDim, fontSize: 13)),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton(
+            onPressed: () => store.cycleMark(seat),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(88, 36),
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              foregroundColor: c ?? kDim,
+              backgroundColor: c?.withOpacity(.16),
+              side: BorderSide(color: c ?? kBorder),
+            ),
+            child: Text(markLabels[lvl]),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ---------------- 桌面键盘快捷键（工作流 B，对齐网页版 ux.js HOTKEYS） ----------------
 
   /// 数字键 1..9 → 字符。用 LogicalKeyboardKey 判定，避免受输入法/大小写影响。
@@ -211,6 +305,7 @@ class _GameScreenState extends State<GameScreen> {
     if (k == LogicalKeyboardKey.keyA) return 'a';
     if (k == LogicalKeyboardKey.keyF) return 'f';
     if (k == LogicalKeyboardKey.keyM) return 'm';
+    if (k == LogicalKeyboardKey.keyV) return 'v';
     if (k == LogicalKeyboardKey.slash) return '/';
     if (k == LogicalKeyboardKey.question) return '?';
     if (k == LogicalKeyboardKey.digit0) return '0';
@@ -337,6 +432,9 @@ class _GameScreenState extends State<GameScreen> {
           setState(() => _dock = 1); // 先切到房间聊天页（网页版 F 也会切 dock）
           _chatFocus.requestFocus();
           break;
+        case HotkeyAction.cycleMark:
+          unawaited(_cycleNextSeatMark());
+          break;
         case HotkeyAction.mic:
           unawaited(_toggleMic());
           break;
@@ -370,6 +468,11 @@ class _GameScreenState extends State<GameScreen> {
         appBar: AppBar(
           title: Text('${_phaseLabel(phase)} · 第 ${g['day'] ?? 1} 天'),
           actions: [
+            IconButton(
+              tooltip: '座位标记（只有你自己看得到）',
+              icon: const Icon(Icons.flag_outlined),
+              onPressed: () => unawaited(_showMarkers()),
+            ),
             IconButton(
               tooltip: store.sfx.enabled ? '关闭音效' : '开启音效',
               icon: Icon(store.sfx.enabled ? Icons.volume_up : Icons.volume_off),
@@ -409,7 +512,8 @@ class _GameScreenState extends State<GameScreen> {
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.all(10),
                 children: [
-                  for (final s in seats) _seatChip(s as Map, mySeat),
+                  for (final s in seats)
+                    _seatChip(s as Map, mySeat, store.marks[(s['seat'] as num?)?.toInt()] ?? 0),
                 ],
               ),
             ),
@@ -457,23 +561,36 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
-  Widget _seatChip(Map s, dynamic mySeat) {
+  Widget _seatChip(Map s, dynamic mySeat, int mark) {
     final alive = s['alive'] != false;
     final isMe = s['seat'] == mySeat;
+    final mc = markColor(mark);
     return Container(
       width: 96,
       margin: const EdgeInsets.only(right: 8),
       decoration: BoxDecoration(
         color: kPanel2,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: isMe ? kAccent : (alive ? kBorder : kBorder.withOpacity(.4))),
+        border: Border.all(
+          color: isMe ? kAccent : (mc ?? (alive ? kBorder : kBorder.withOpacity(.4))),
+          width: (mc != null && !isMe) ? 1.6 : 1,
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.all(8),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text('#${s['seat']}', style: const TextStyle(color: kDim, fontSize: 11)),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('#${s['seat']}', style: const TextStyle(color: kDim, fontSize: 11)),
+                if (mc != null) ...[
+                  const SizedBox(width: 4),
+                  Text(markLabels[mark], style: TextStyle(color: mc, fontSize: 10)),
+                ],
+              ],
+            ),
             Text('${s['nickname'] ?? ''}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

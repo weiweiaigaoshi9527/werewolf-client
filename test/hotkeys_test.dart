@@ -75,13 +75,16 @@ void main() {
       expect(hit('a', canAct: false, hasPass: false), isNull);
     });
 
-    test('f 聚焦聊天、m 切麦克风：不受 canAct 门控', () {
+    test('f 聚焦聊天、m 循环座位标记、v 切麦克风：不受 canAct 门控', () {
       expect(hit('f'), const HotkeyHit(HotkeyAction.focusChat));
       expect(hit('F'), const HotkeyHit(HotkeyAction.focusChat));
-      expect(hit('m'), const HotkeyHit(HotkeyAction.mic));
-      expect(hit('M'), const HotkeyHit(HotkeyAction.mic));
+      expect(hit('m'), const HotkeyHit(HotkeyAction.cycleMark));
+      expect(hit('M'), const HotkeyHit(HotkeyAction.cycleMark));
+      expect(hit('v'), const HotkeyHit(HotkeyAction.mic));
+      expect(hit('V'), const HotkeyHit(HotkeyAction.mic));
       expect(hit('f', canAct: false), const HotkeyHit(HotkeyAction.focusChat));
-      expect(hit('m', canAct: false), const HotkeyHit(HotkeyAction.mic));
+      expect(hit('m', canAct: false), const HotkeyHit(HotkeyAction.cycleMark));
+      expect(hit('v', canAct: false), const HotkeyHit(HotkeyAction.mic));
     });
 
     test('1..9 映射到 0..8，且越界返回 null', () {
@@ -123,6 +126,9 @@ void main() {
     test('hotkeyHelp 非空且标注了网页独有的 T / D', () {
       expect(hotkeyHelp, isNotEmpty);
       expect(hotkeyHelp.map((e) => e.keys), contains('1 – 9 / 0'));
+      // M 回归网页版语义（座位标记），麦克风改用本端专有的 V
+      expect(hotkeyHelp.any((e) => e.keys == 'M' && e.desc.contains('标记')), isTrue);
+      expect(hotkeyHelp.any((e) => e.keys == 'V' && e.desc.contains('麦克风')), isTrue);
       // 必须显式说明哪些是网页独有、本端不适用
       expect(hotkeyHelp.any((e) => e.desc.contains('不适用')), isTrue);
       expect(hotkeyHelp.any((e) => e.keys.contains('T / D')), isTrue);
@@ -248,5 +254,42 @@ void main() {
           ?.findAncestorWidgetOfExactType<EditableText>(),
       isNotNull,
     );
+  });
+
+  testWidgets('M 循环推进「我下一位玩家」的座位标记', (tester) async {
+    final actions = <Map<String, dynamic>>[];
+    final store = buildStore(actions, game: dayGame());
+    await pumpGame(tester, store);
+
+    // 我是 1 号，座位表顺序 1..6 → 下一位是 2 号：未标 → 可疑 → 好人
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyM);
+    await tester.pump();
+    expect(store.marks, {2: 1});
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyM);
+    await tester.pump();
+    expect(store.marks, {2: 2});
+  });
+
+  testWidgets('标记面板：列出全部座位、点按钮循环、可一键清空', (tester) async {
+    final actions = <Map<String, dynamic>>[];
+    final store = buildStore(actions, game: dayGame());
+    await pumpGame(tester, store);
+
+    await tester.tap(find.byTooltip('座位标记（只有你自己看得到）'));
+    await tester.pumpAndSettle();
+    expect(find.text('🚩 座位标记'), findsOneWidget);
+    // 6 个座位各一个初始「未标」按钮
+    expect(find.text('未标'), findsNWidgets(6));
+
+    // 第 2 行是 2 号座位 → 未标 → 可疑
+    await tester.tap(find.text('未标').at(1));
+    await tester.pumpAndSettle();
+    expect(store.marks, {2: 1});
+    expect(find.text('可疑'), findsWidgets); // 面板按钮 + 座位花标
+
+    await tester.tap(find.text('清空标记'));
+    await tester.pumpAndSettle();
+    expect(store.marks, isEmpty);
   });
 }

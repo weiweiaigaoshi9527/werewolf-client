@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'api.dart';
 import 'config.dart';
+import 'marks.dart' as mk;
 import 'models.dart';
 import 'sfx.dart';
 import 'voice.dart';
@@ -25,6 +27,8 @@ class AppStore extends ChangeNotifier {
   int displayMaxHeight = 0;
   /// 语音服务是否就绪（GET /api/voice/status：开关打开且 ASR/TTS 都健康）。
   bool voiceServiceReady = false;
+  /// 座位标记（本地、仅自己可见、按房间持久化）：座位号 → 等级 0..3（未标/可疑/好人/狼人）。
+  Map<int, int> marks = const {};
 
   // ---------- 语音通道 ----------
   VoiceClient? voice;
@@ -66,6 +70,55 @@ class AppStore extends ChangeNotifier {
     voice = null;
     voiceCaptions.clear();
     talkingName = null;
+  }
+
+  // ---------- 座位标记（本地、仅自己可见、按房间持久化） ----------
+  /// 已载入标记的房间号；只有与目标房间号不同才重新读盘，避免每次 room.state
+  /// 推送都刷一遍存储。房间为 null 时清空。
+  String _marksRoom = '';
+
+  Future<void> _syncMarks(String? roomNo) async {
+    final want = roomNo ?? '';
+    if (want == _marksRoom) return;
+    _marksRoom = want;
+    if (want.isEmpty) {
+      marks = const {};
+      notifyListeners();
+      return;
+    }
+    try {
+      final p = await SharedPreferences.getInstance();
+      marks = mk.parseMarks(p.getString(mk.marksKey(want)));
+    } catch (_) {
+      marks = const {};
+    }
+    notifyListeners();
+  }
+
+  /// 循环推进某座位的标记并落盘（与网页版 MARK.cycle 同语义）。
+  Future<void> cycleMark(int seat) async {
+    marks = {...marks, seat: mk.cycleMark(marks[seat])};
+    notifyListeners();
+    await _saveMarks();
+  }
+
+  Future<void> clearMarks() async {
+    marks = const {};
+    notifyListeners();
+    await _saveMarks();
+  }
+
+  Future<void> _saveMarks() async {
+    if (_marksRoom.isEmpty) return;
+    try {
+      final p = await SharedPreferences.getInstance();
+      final raw = mk.encodeMarks(marks);
+      if (raw.isEmpty) {
+        await p.remove(mk.marksKey(_marksRoom));
+      } else {
+        await p.setString(mk.marksKey(_marksRoom), raw);
+      }
+    } catch (_) {}
   }
 
   Future<bool> startMic() async => voice?.startMic() ?? false;
@@ -211,6 +264,7 @@ class AppStore extends ChangeNotifier {
       final r = my['room'];
       if (r is Map<String, dynamic> && r['roomNo'] != null) {
         room = r;
+        await _syncMarks('${r['roomNo']}');
         if (r['status'] == 'PLAYING') {
           try {
             game = await api.get('/api/game/state');
@@ -254,6 +308,7 @@ class AppStore extends ChangeNotifier {
           roomFeed.clear();
           wolfChat.clear();
         }
+        unawaited(_syncMarks(room == null ? null : '${room!['roomNo']}'));
         break;
       case 'room.left':
       case 'room.kicked':
@@ -262,6 +317,7 @@ class AppStore extends ChangeNotifier {
         roomFeed.clear();
         gameChat.clear();
         wolfChat.clear();
+        unawaited(_syncMarks(null));
         _closeVoice();
         if (m['type'] == 'room.kicked') {
           _notify('${m['message'] ?? '你被移出房间'}', kind: 'warn');
@@ -454,6 +510,7 @@ class AppStore extends ChangeNotifier {
         await api.post('/api/room/leave');
         room = null;
         game = null;
+        unawaited(_syncMarks(null));
         _closeVoice();
       });
   Future<void> startGame() => _run(() => api.post('/api/game/start', {}));

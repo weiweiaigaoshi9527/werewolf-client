@@ -12,6 +12,15 @@ const kBlood = Color(0xFFA4243B);
 const kGreen = Color(0xFF4F9D69);
 const kMoon = Color(0xFFE3E8FF);
 
+/// 座位标记（本地、仅自己可见）的配色，对齐网页版 `.mk-btn.m-sus / .m-good / .m-wolf`。
+/// 等级 0（未标）返回 null，表示不显示任何标记。
+Color? markColor(int level) => switch (level) {
+      1 => kAccent, // 可疑
+      2 => kGreen, // 好人
+      3 => kBlood, // 狼人
+      _ => null,
+    };
+
 ThemeData werewolfTheme() {
   return ThemeData(
     useMaterial3: true,
