@@ -5,6 +5,8 @@ import '../store.dart';
 import '../theme.dart';
 import 'forum.dart';
 import 'ranking.dart';
+import 'ai_show.dart';
+import 'support.dart';
 
 class LobbyScreen extends StatelessWidget {
   const LobbyScreen({super.key});
@@ -118,9 +120,16 @@ class LobbyScreen extends StatelessWidget {
               }),
               _tile(context, '🚪', '房间号加入', '输入 6 位房号', () => _join(context)),
               _tile(context, '👁️', '观战加入', '进入进行中的对局旁观', () => _spectate(context)),
+              if (store.feat('aiShow'))
+                _tile(context, '🎬', '全 AI 队局', 'AI 自动对战，随时旁观',
+                    () => openAiShowCreate(context)),
             ],
           ),
           const SizedBox(height: 20),
+          if (store.feat('aiShow')) ...[
+            const AiShowSection(),
+            const SizedBox(height: 20),
+          ],
           const Text('社区', style: TextStyle(color: kDim, letterSpacing: 2)),
           const SizedBox(height: 10),
           Wrap(
@@ -135,6 +144,8 @@ class LobbyScreen extends StatelessWidget {
                     () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RankingScreen()))),
               if (store.feat('friends'))
                 _tile(context, '🎁', '兑换码', '输入礼包码领奖励', () => _redeem(context)),
+              _tile(context, '🛎️', '在线客服', 'AI 自动答，可转人工',
+                  () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SupportScreen()))),
             ],
           ),
           const SizedBox(height: 20),

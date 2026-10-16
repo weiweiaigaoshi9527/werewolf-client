@@ -72,13 +72,29 @@ class _WerewolfAppState extends State<WerewolfApp> {
         ],
       ),
       home: Consumer<AppStore>(builder: (context, s, _) {
+        final Widget content;
         if (!s.serverConfigured) {
-          return ServerSetupScreen(config: s.config, onSaved: () => setState(() {}));
+          content = ServerSetupScreen(config: s.config, onSaved: () => setState(() {}));
+        } else if (!s.loggedIn) {
+          content = const LoginScreen();
+        } else if (s.inGame) {
+          content = const GameScreen();
+        } else if (s.inRoom) {
+          content = const RoomScreen();
+        } else {
+          content = const HomeShell();
         }
-        if (!s.loggedIn) return const LoginScreen();
-        if (s.inGame) return const GameScreen();
-        if (s.inRoom) return const RoomScreen();
-        return const HomeShell();
+        // 管理员可在后台设置「内容区最大高度」（GET /api/config/display 的 webMaxHeight）。
+        // 网页端用它把布局收成窄窗，桌面端同比例收窄以保持一致；手机屏本来就矮，不处理。
+        final h = s.displayMaxHeight;
+        if (h <= 0 || h >= 100 || MediaQuery.of(context).size.width < 900) return content;
+        return Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * h / 100),
+            child: content,
+          ),
+        );
       }),
     );
   }

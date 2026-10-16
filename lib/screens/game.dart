@@ -5,7 +5,9 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../animations.dart';
 import '../api.dart';
+import '../feed_filter.dart';
 import '../hotkeys.dart';
+import '../models.dart';
 import '../sfx.dart';
 import '../store.dart';
 import '../theme.dart';
@@ -22,6 +24,19 @@ class _GameScreenState extends State<GameScreen> {
   final _chatFocus = FocusNode();
   late final AppStore _store;
   bool _micOn = false;
+
+  /// 中区停靠栏：0 = 对局记录，1 = 房间聊天，2 = 狼队频道（与网页版 dock-tabs 一致）。
+  int _dock = 0;
+  /// 记录筛选：分类 + 只看某座位（0 = 不限）。
+  String _feedCat = 'all';
+  int _feedSeat = 0;
+  /// AI 对话总结面板。
+  bool _summaryOpen = false;
+  bool _summaryLoading = false;
+  String? _summary;
+
+  /// 狼队频道只在「存活的狼 + 夜晚」时存在；关掉时即使停在那一栏也回落到记录页。
+  int get _dockIndex => (_dock == 2 && _store.game?['wolfChatEnabled'] != true) ? 0 : _dock;
 
   /// 身份牌翻牌揭示：GameScreen 的生命周期约等于一局，所以用一次性布尔即可，
   /// 不能用 gameId 去重——game.state 里的 gameId 只在终局那一次下发。
@@ -100,6 +115,56 @@ class _GameScreenState extends State<GameScreen> {
 
   void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
+  /// 发送当前停靠栏的输入：记录页下不发送（输入框只在聊天/狼队页出现）。
+  Future<void> _send() async {
+    final t = _chat.text.trim();
+    if (t.isEmpty) return;
+    _chat.clear();
+    try {
+      if (_dockIndex == 2) {
+        await _store.sendWolfChat(t);
+      } else {
+        await _store.sendChat(t);
+      }
+    } on AppError catch (e) {
+      if (mounted) _toast(e.message);
+    }
+  }
+
+  /// AI 归纳本局对话（只总结谁说了什么，不分析局面）。
+  Future<void> _runSummary() async {
+    setState(() {
+      _summaryLoading = true;
+      _summaryOpen = true;
+      _summary = null;
+    });
+    try {
+      final s = await _store.feedSummary();
+      if (mounted) setState(() => _summary = s.isEmpty ? '（本局还没有可总结的发言）' : s);
+    } on AppError catch (e) {
+      if (mounted) setState(() => _summary = '生成失败：${e.message}');
+    } finally {
+      if (mounted) setState(() => _summaryLoading = false);
+    }
+  }
+
+  /// 复制本局记录（纯中文，与网页版「⧉ 复制」同一份文案）。
+  Future<void> _copyFeed() async {
+    final g = _store.game ?? const {};
+    final feed = (g['feed'] as List?) ?? const [];
+    if (feed.isEmpty) {
+      _toast('还没有可复制的记录');
+      return;
+    }
+    final text = buildFeedExport(
+      feed: feed,
+      roomNo: '${g['roomNo'] ?? ''}',
+      day: (g['day'] as num?)?.toInt() ?? 1,
+    );
+    await Clipboard.setData(ClipboardData(text: text));
+    if (mounted) _toast('已复制本局记录（${text.split("\n").length} 行）');
+  }
+
   Future<void> _toggleMic() async {
     if (_micOn) {
       await _store.stopMic();
@@ -109,7 +174,11 @@ class _GameScreenState extends State<GameScreen> {
     final ok = await _store.startMic();
     if (!mounted) return;
     setState(() => _micOn = ok);
-    if (!ok) _toast('无法开启麦克风（语音服务未就绪或权限被拒）');
+    if (!ok) {
+      _toast(_store.voiceServiceReady
+          ? '无法开启麦克风（权限被拒或设备不可用）'
+          : '语音服务未就绪（服务端 ASR / TTS 未就绪或已关闭）');
+    }
   }
 
   Future<void> _act(Map<String, dynamic> a) async {
@@ -265,6 +334,7 @@ class _GameScreenState extends State<GameScreen> {
           _doPass();
           break;
         case HotkeyAction.focusChat:
+          setState(() => _dock = 1); // 先切到房间聊天页（网页版 F 也会切 dock）
           _chatFocus.requestFocus();
           break;
         case HotkeyAction.mic:
@@ -345,68 +415,42 @@ class _GameScreenState extends State<GameScreen> {
             ),
             // 语音实时字幕
             if (store.voiceCaptions.isNotEmpty) _captionStrip(store),
-            // 记录：对局事件流 + WS 实时文字（聊天回声与旁白都只走 game.chat / narrator）
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                children: [
-                  for (final c in store.gameChat.reversed)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 3),
-                      child: Text(
-                        c.kind == 'narrator' ? '📢 ${c.text}' : '💬 ${c.name}：${c.text}',
-                        style: TextStyle(
-                          fontSize: 13,
-                          height: 1.4,
-                          color: c.kind == 'narrator' ? kDim : kText,
-                          fontStyle: c.kind == 'narrator' ? FontStyle.italic : FontStyle.normal,
-                        ),
-                      ),
-                    ),
-                  for (final e in feed.reversed)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 3),
-                      child: Text(_feedLine(e as Map, seats), style: const TextStyle(fontSize: 13, height: 1.4)),
-                    ),
-                ],
-              ),
-            ),
+            // 中区：记录 / 房间聊天 / 狼队频道（与网页版 dock-tabs 一致）
+            _dockTabs(g),
+            Expanded(child: _dockBody(store, g, feed)),
             // 行动区
             _actionPanel(store, g, seats, mySeat),
-            // 聊天
-            SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _chat,
-                        focusNode: _chatFocus,
-                        decoration: const InputDecoration(hintText: '说点什么…', isDense: true),
-                        onSubmitted: (t) {
-                          if (t.trim().isEmpty) return;
-                          store.sendChat(t.trim());
-                          _chat.clear();
-                        },
+            // 聊天输入：随停靠栏切换目标频道（房间聊天 / 狼队频道）
+            if (_dockIndex != 0)
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _chat,
+                          focusNode: _chatFocus,
+                          maxLength: 200,
+                          decoration: InputDecoration(
+                            hintText: _dockIndex == 2 ? '狼队内部消息（队友可见）…' : '说点什么…',
+                            isDense: true,
+                            counterText: '',
+                          ),
+                          onSubmitted: (_) => unawaited(_send()),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton.filled(
-                      onPressed: () {
-                        final t = _chat.text.trim();
-                        if (t.isEmpty) return;
-                        store.sendChat(t);
-                        _chat.clear();
-                      },
-                      icon: const Icon(Icons.send, color: Color(0xFF1A1206)),
-                      style: IconButton.styleFrom(backgroundColor: kAccent),
-                    ),
-                  ],
+                      const SizedBox(width: 8),
+                      IconButton.filled(
+                        onPressed: () => unawaited(_send()),
+                        icon: const Icon(Icons.send, color: Color(0xFF1A1206)),
+                        style: IconButton.styleFrom(backgroundColor: kAccent),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
           ],
         ),
       ),
@@ -784,27 +828,200 @@ class _GameScreenState extends State<GameScreen> {
       }[p] ??
           p;
 
-  String _feedLine(Map e, List seats) {
-    final t = e['type'];
-    String seatName(dynamic seat) {
-      final s = seats.cast<Map>().firstWhere((x) => x['seat'] == seat, orElse: () => const {});
-      return s.isEmpty ? '$seat 号' : '${s['nickname']}（$seat）';
-    }
+  // ---------------- 中区停靠栏：记录 / 房间聊天 / 狼队频道 ----------------
 
-    final who = e['actorSeat'] != null ? seatName(e['actorSeat']) : '';
-    switch (t) {
-      case 'SPEECH':
-        return '💬 $who：${e['detail'] ?? ''}';
-      case 'LAST_WORDS':
-        return '🕯 $who 遗言：${e['detail'] ?? ''}';
-      case 'VOTE_DETAIL':
-        return '🗳 ${e['detail'] ?? ''}';
-      case 'PLAYER_DIED':
-        return '💀 $who 出局';
-      case 'NARRATOR':
-        return '📣 ${e['detail'] ?? ''}';
+  Widget _dockTabs(Map g) {
+    final wolfOn = g['wolfChatEnabled'] == true;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 2, 10, 4),
+      child: Row(
+        children: [
+          _dockTab(0, '📋 对局记录'),
+          _dockTab(1, '💬 房间聊天'),
+          if (wolfOn) _dockTab(2, '🐺 狼队频道'),
+        ],
+      ),
+    );
+  }
+
+  Widget _dockTab(int index, String label) {
+    final active = _dockIndex == index;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: GestureDetector(
+        onTap: () => setState(() => _dock = index),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: active ? kAccent.withOpacity(.18) : kPanel,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: active ? kAccent : kBorder),
+          ),
+          child: Text(label, style: TextStyle(fontSize: 12.5, color: active ? kAccent : kDim)),
+        ),
+      ),
+    );
+  }
+
+  Widget _dockBody(AppStore store, Map g, List feed) {
+    switch (_dockIndex) {
+      case 1:
+        return _chatList(store.gameChat, wolf: false, empty: '还没有人说话…');
+      case 2:
+        return _chatList(store.wolfChat, wolf: true, empty: '狼队内部频道：只有存活的狼能看到这里。');
       default:
-        return '${e['detail'] ?? t ?? ''}';
+        return _feedList(feed);
     }
   }
+
+  Widget _chatList(List<WwChatLine> lines, {required bool wolf, required String empty}) {
+    if (lines.isEmpty) {
+      return Center(child: Text(empty, style: const TextStyle(color: kDim, fontSize: 13)));
+    }
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      children: [
+        for (final c in lines.reversed)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 3),
+            child: Text(
+              c.kind == 'narrator' ? '📢 ${c.text}' : '${wolf ? '🐺' : '💬'} ${c.name}：${c.text}',
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.4,
+                color: c.kind == 'narrator' ? kDim : (wolf ? kBlood : kText),
+                fontStyle: c.kind == 'narrator' ? FontStyle.italic : FontStyle.normal,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// 对局记录：分类筛选条 + AI 总结面板 + 逐条记录（点条目可只看该座位）。
+  Widget _feedList(List feed) {
+    final rows = <Map>[];
+    for (final e in feed) {
+      if (e is Map && feedMatch(e.cast<String, dynamic>(), cat: _feedCat, seat: _feedSeat)) rows.add(e);
+    }
+    return Column(
+      children: [
+        _feedTools(),
+        if (_summaryOpen) _summaryBox(),
+        Expanded(
+          child: rows.isEmpty
+              ? Center(
+                  child: Text(feed.isEmpty ? '本局还没有记录。' : '没有符合条件的记录。',
+                      style: const TextStyle(color: kDim, fontSize: 13)),
+                )
+              : ListView(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  children: [for (final e in rows.reversed) _feedRow(e)],
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _feedTools() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          for (final c in feedCategories)
+            _pill(c.$2, active: _feedCat == c.$1, onTap: () => setState(() => _feedCat = c.$1)),
+          if (_feedSeat > 0)
+            _pill('只看 $_feedSeat 号 ✕', active: true, onTap: () => setState(() => _feedSeat = 0)),
+          _pill(_summaryLoading ? '🧠 生成中…' : '🧠 AI 总结', active: false, onTap: _summaryLoading ? null : () => unawaited(_runSummary())),
+          _pill('⧉ 复制', active: false, onTap: () => unawaited(_copyFeed())),
+        ],
+      ),
+    );
+  }
+
+  Widget _pill(String label, {required bool active, VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: active ? kAccent.withOpacity(.18) : kPanel2,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: active ? kAccent : kBorder),
+        ),
+        child: Text(label,
+            style: TextStyle(fontSize: 11.5, color: onTap == null ? kDim : (active ? kAccent : kText))),
+      ),
+    );
+  }
+
+  Widget _summaryBox() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(10, 4, 10, 4),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: kPanel,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: kBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(child: Text('🧠 AI 对话总结', style: TextStyle(color: kAccent, fontSize: 12.5))),
+              GestureDetector(
+                onTap: () => setState(() => _summaryOpen = false),
+                child: const Text('✕', style: TextStyle(color: kDim, fontSize: 12.5)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _summaryLoading ? '正在归纳本局发言…' : (_summary ?? ''),
+            style: const TextStyle(color: kText, fontSize: 12.5, height: 1.45),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _feedRow(Map e) {
+    final t = '${e['type'] ?? ''}';
+    final actor = (e['actor'] as num?)?.toInt() ?? 0;
+    final night = t == 'NIGHT_ACTION' || t == 'NIGHT_RESOLVE';
+    return InkWell(
+      onTap: actor > 0 ? () => setState(() => _feedSeat = _feedSeat == actor ? 0 : actor) : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Text(
+          '${_feedEmoji(t)} ${feedTextZh(e)}',
+          style: TextStyle(fontSize: 13, height: 1.4, color: night ? kDim : kText),
+        ),
+      ),
+    );
+  }
+
+  /// 事件类型 → 前缀图标（对齐网页版 feedLine）。
+  String _feedEmoji(String t) => const {
+        'SPEECH': '💬',
+        'LAST_WORDS': '💀',
+        'PLAYER_DIED': '☠️',
+        'DAWN_ANNOUNCE': '🌅',
+        'VOTE_RESULT': '🗳️',
+        'VOTE_DETAIL': '🗳️',
+        'SHOOT': '🔫',
+        'IDIOT_REVEAL': '🤪',
+        'WHITE_WOLF_BLOWUP': '💥',
+        'SHERIFF_WIN': '👑',
+        'SHERIFF_SIGNUP': '🙋',
+        'SHERIFF_WITHDRAW': '🙋‍♂️',
+        'NIGHT_ACTION': '🌙',
+        'NIGHT_RESOLVE': '🌙',
+      }[t] ??
+      '·';
 }
