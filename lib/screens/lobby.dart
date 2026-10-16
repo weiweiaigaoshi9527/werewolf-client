@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../api.dart';
+import '../i18n.dart';
 import '../store.dart';
 import '../theme.dart';
 import 'forum.dart';
 import 'ranking.dart';
 import 'ai_show.dart';
+import 'appearance_panel.dart';
+import 'bgm_panel.dart';
 import 'support.dart';
 
 class LobbyScreen extends StatelessWidget {
@@ -18,16 +21,16 @@ class LobbyScreen extends StatelessWidget {
       context: context,
       builder: (c) => AlertDialog(
         backgroundColor: kPanel,
-        title: const Text('加入房间'),
+        title: const Tx('加入房间'),
         content: TextField(
           controller: controller,
           keyboardType: TextInputType.number,
           maxLength: 6,
-          decoration: const InputDecoration(hintText: '输入 6 位房间号'),
+          decoration: InputDecoration(hintText: tr('输入 6 位房间号')),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(c), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(c, controller.text.trim()), child: const Text('加入')),
+          TextButton(onPressed: () => Navigator.pop(c), child: const Tx('取消')),
+          FilledButton(onPressed: () => Navigator.pop(c, controller.text.trim()), child: const Tx('加入')),
         ],
       ),
     );
@@ -41,7 +44,7 @@ class LobbyScreen extends StatelessWidget {
   }
 
   void _toast(BuildContext context, String msg) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Tx(msg)));
 
   Future<void> _spectate(BuildContext context) async {
     final controller = TextEditingController();
@@ -50,16 +53,16 @@ class LobbyScreen extends StatelessWidget {
       context: context,
       builder: (c) => AlertDialog(
         backgroundColor: kPanel,
-        title: const Text('观战加入'),
+        title: const Tx('观战加入'),
         content: TextField(
           controller: controller,
           keyboardType: TextInputType.number,
           maxLength: 6,
-          decoration: const InputDecoration(hintText: '输入要观战的 6 位房号'),
+          decoration: InputDecoration(hintText: tr('输入要观战的 6 位房号')),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(c), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(c, controller.text.trim()), child: const Text('观战')),
+          TextButton(onPressed: () => Navigator.pop(c), child: const Tx('取消')),
+          FilledButton(onPressed: () => Navigator.pop(c, controller.text.trim()), child: const Tx('观战')),
         ],
       ),
     );
@@ -78,15 +81,26 @@ class LobbyScreen extends StatelessWidget {
     final u = store.user ?? const {};
     return Scaffold(
       appBar: AppBar(
-        title: const Text('村庄大厅'),
+        title: const Tx('村庄大厅'),
         actions: [
+          const LangButton(),
           IconButton(
-            tooltip: store.sfx.enabled ? '关闭音效' : '开启音效',
+            tooltip: tr('背景音乐（本地 MP3）'),
+            icon: const Icon(Icons.music_note),
+            onPressed: () => showBgmPanel(context),
+          ),
+          IconButton(
+            tooltip: tr('外观（主题 / 字号 / 密度 / 背景）'),
+            icon: const Icon(Icons.brightness_2),
+            onPressed: () => showAppearancePanel(context),
+          ),
+          IconButton(
+            tooltip: store.sfx.enabled ? tr('关闭音效') : tr('开启音效'),
             icon: Icon(store.sfx.enabled ? Icons.volume_up : Icons.volume_off),
             onPressed: () => store.toggleSfx(),
           ),
-          IconButton(tooltip: '服务器设置', icon: const Icon(Icons.dns), onPressed: () => store.clearServer()),
-          IconButton(tooltip: '退出登录', icon: const Icon(Icons.logout), onPressed: () => store.logout()),
+          IconButton(tooltip: tr('服务器设置'), icon: const Icon(Icons.dns), onPressed: () => store.clearServer()),
+          IconButton(tooltip: tr('退出登录'), icon: const Icon(Icons.logout), onPressed: () => store.logout()),
         ],
       ),
       body: ListView(
@@ -94,10 +108,10 @@ class LobbyScreen extends StatelessWidget {
         children: [
           Card(
             child: ListTile(
-              leading: const CircleAvatar(backgroundColor: kAccent, child: Text('🐺')),
-              title: Text('${u['nickname'] ?? ''}', style: const TextStyle(color: kMoon, fontWeight: FontWeight.bold)),
-              subtitle: Text('@${u['username'] ?? ''} · Lv.${u['level'] ?? 1} · 💰${u['gold'] ?? 0}',
-                  style: const TextStyle(color: kDim)),
+              leading: CircleAvatar(backgroundColor: kAccent, child: const Tx('🐺')),
+              title: Tx('${u['nickname'] ?? ''}', style: TextStyle(color: kMoon, fontWeight: FontWeight.bold)),
+              subtitle: Tx('@${u['username'] ?? ''} · Lv.${u['level'] ?? 1} · 💰${u['gold'] ?? 0}',
+                  style: TextStyle(color: kDim)),
               trailing: CircleAvatar(
                 radius: 8,
                 backgroundColor: store.wsConnected ? kGreen : kBlood,
@@ -105,7 +119,7 @@ class LobbyScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          const Text('开始一局', style: TextStyle(color: kDim, letterSpacing: 2)),
+          Tx('开始一局', style: TextStyle(color: kDim, letterSpacing: 2)),
           const SizedBox(height: 10),
           Wrap(
             spacing: 12,
@@ -130,7 +144,7 @@ class LobbyScreen extends StatelessWidget {
             const AiShowSection(),
             const SizedBox(height: 20),
           ],
-          const Text('社区', style: TextStyle(color: kDim, letterSpacing: 2)),
+          Tx('社区', style: TextStyle(color: kDim, letterSpacing: 2)),
           const SizedBox(height: 10),
           Wrap(
             spacing: 12,
@@ -149,9 +163,9 @@ class LobbyScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 20),
-          const Text('提示', style: TextStyle(color: kDim, letterSpacing: 2)),
+          Tx('提示', style: TextStyle(color: kDim, letterSpacing: 2)),
           const SizedBox(height: 6),
-          const Text('创建房间后可在房间内“添加 AI”补位并开局。所有设备连同一服务器即可联机。',
+          Tx('创建房间后可在房间内“添加 AI”补位并开局。所有设备连同一服务器即可联机。',
               style: TextStyle(color: kDim, height: 1.6, fontSize: 13)),
         ],
       ),
@@ -166,11 +180,11 @@ class LobbyScreen extends StatelessWidget {
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: kPanel,
-        title: const Text('兑换码'),
-        content: TextField(controller: c, maxLength: 32, decoration: const InputDecoration(hintText: '输入礼包码')),
+        title: const Tx('兑换码'),
+        content: TextField(controller: c, maxLength: 32, decoration: InputDecoration(hintText: tr('输入礼包码'))),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, c.text.trim()), child: const Text('兑换')),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Tx('取消')),
+          FilledButton(onPressed: () => Navigator.pop(context, c.text.trim()), child: const Tx('兑换')),
         ],
       ),
     );
@@ -194,11 +208,11 @@ class LobbyScreen extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 12),
             child: Column(
               children: [
-                Text(icon, style: const TextStyle(fontSize: 34)),
+                Tx(icon, style: const TextStyle(fontSize: 34)),
                 const SizedBox(height: 10),
-                Text(title, style: const TextStyle(fontWeight: FontWeight.bold, color: kMoon)),
+                Tx(title, style: TextStyle(fontWeight: FontWeight.bold, color: kMoon)),
                 const SizedBox(height: 4),
-                Text(sub, textAlign: TextAlign.center, style: const TextStyle(color: kDim, fontSize: 12)),
+                Tx(sub, textAlign: TextAlign.center, style: TextStyle(color: kDim, fontSize: 12)),
               ],
             ),
           ),

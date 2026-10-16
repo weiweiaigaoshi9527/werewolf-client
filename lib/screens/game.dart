@@ -12,6 +12,8 @@ import '../models.dart';
 import '../sfx.dart';
 import '../store.dart';
 import '../theme.dart';
+import 'appearance_panel.dart';
+import '../i18n.dart';
 
 class GameScreen extends StatefulWidget {
   const GameScreen({super.key});
@@ -114,7 +116,7 @@ class _GameScreenState extends State<GameScreen> {
     super.dispose();
   }
 
-  void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Tx(m)));
 
   /// 发送当前停靠栏的输入：记录页下不发送（输入框只在聊天/狼队页出现）。
   Future<void> _send() async {
@@ -205,6 +207,18 @@ class _GameScreenState extends State<GameScreen> {
     if (seat is num) await _store.cycleMark(seat.toInt());
   }
 
+  /// 快捷键 T：随机换一个主题（与外观面板的 🎲 同一入口，网页端 THEME.random）。
+  Future<void> _randomTheme() async {
+    final t = await appearance.randomTheme();
+    if (mounted) _toast('${t.icon} ${t.name} 主题已应用');
+  }
+
+  /// 快捷键 D：切换紧凑 / 舒适密度（网页端 THEME.setDensity(!THEME.dense)）。
+  Future<void> _toggleDensity() async {
+    await appearance.toggleDensity();
+    if (mounted) _toast(appearance.dense ? '紧凑密度' : '舒适密度');
+  }
+
   /// 标记面板：与网页版右侧「标记」面板同一份数据（点一次循环一级），另有「清空标记」。
   /// 数据只在本地，服务端与其它玩家都看不到。
   Future<void> _showMarkers() async {
@@ -223,14 +237,14 @@ class _GameScreenState extends State<GameScreen> {
                 children: [
                   Row(
                     children: [
-                      const Expanded(
-                        child: Text('🚩 座位标记',
+                      Expanded(
+                        child: Tx('🚩 座位标记',
                             style: TextStyle(color: kMoon, fontWeight: FontWeight.bold)),
                       ),
-                      TextButton(onPressed: () => store.clearMarks(), child: const Text('清空标记')),
+                      TextButton(onPressed: () => store.clearMarks(), child: const Tx('清空标记')),
                     ],
                   ),
-                  const Text('只有你自己看得到，按房间保存在本机',
+                  Tx('只有你自己看得到，按房间保存在本机',
                       style: TextStyle(color: kDim, fontSize: 12)),
                   const SizedBox(height: 8),
                   ConstrainedBox(
@@ -261,7 +275,7 @@ class _GameScreenState extends State<GameScreen> {
       child: Row(
         children: [
           Expanded(
-            child: Text('$seat号 ${s['nickname'] ?? ''}${alive ? '' : '（出局）'}',
+            child: Tx('$seat号 ${s['nickname'] ?? ''}${alive ? '' : '（出局）'}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: alive ? kText : kDim, fontSize: 13)),
@@ -276,7 +290,7 @@ class _GameScreenState extends State<GameScreen> {
               backgroundColor: c?.withOpacity(.16),
               side: BorderSide(color: c ?? kBorder),
             ),
-            child: Text(markLabels[lvl]),
+            child: Tx(markLabels[lvl]),
           ),
         ],
       ),
@@ -367,7 +381,7 @@ class _GameScreenState extends State<GameScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: kPanel,
-        title: const Text('⌨️ 快捷键'),
+        title: const Tx('⌨️ 快捷键'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -381,13 +395,13 @@ class _GameScreenState extends State<GameScreen> {
                     children: [
                       SizedBox(
                         width: 92,
-                        child: Text(h.keys,
-                            style: const TextStyle(color: kAccent, fontWeight: FontWeight.bold)),
+                        child: Tx(h.keys,
+                            style: TextStyle(color: kAccent, fontWeight: FontWeight.bold)),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
-                          child: Text(h.desc,
-                              style: const TextStyle(color: kText, fontSize: 13, height: 1.35))),
+                          child: Tx(h.desc,
+                              style: TextStyle(color: kText, fontSize: 13, height: 1.35))),
                     ],
                   ),
                 ),
@@ -395,7 +409,7 @@ class _GameScreenState extends State<GameScreen> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('关闭')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Tx('关闭')),
         ],
       ),
     );
@@ -435,6 +449,12 @@ class _GameScreenState extends State<GameScreen> {
         case HotkeyAction.cycleMark:
           unawaited(_cycleNextSeatMark());
           break;
+        case HotkeyAction.randomTheme:
+          unawaited(_randomTheme());
+          break;
+        case HotkeyAction.toggleDensity:
+          unawaited(_toggleDensity());
+          break;
         case HotkeyAction.mic:
           unawaited(_toggleMic());
           break;
@@ -466,22 +486,27 @@ class _GameScreenState extends State<GameScreen> {
       onKeyEvent: _onKeyEvent,
       child: Scaffold(
         appBar: AppBar(
-          title: Text('${_phaseLabel(phase)} · 第 ${g['day'] ?? 1} 天'),
+          title: Tx('${_phaseLabel(phase)} · 第 ${g['day'] ?? 1} 天'),
           actions: [
             IconButton(
-              tooltip: '座位标记（只有你自己看得到）',
+              tooltip: tr('座位标记（只有你自己看得到）'),
               icon: const Icon(Icons.flag_outlined),
               onPressed: () => unawaited(_showMarkers()),
             ),
             IconButton(
-              tooltip: store.sfx.enabled ? '关闭音效' : '开启音效',
+              tooltip: tr('外观（主题 / 字号 / 密度 / 背景）'),
+              icon: const Icon(Icons.brightness_2),
+              onPressed: () => showAppearancePanel(context),
+            ),
+            IconButton(
+              tooltip: store.sfx.enabled ? tr('关闭音效') : tr('开启音效'),
               icon: Icon(store.sfx.enabled ? Icons.volume_up : Icons.volume_off),
               onPressed: () => store.toggleSfx(),
             ),
             if (store.isHost && phase != 'GAME_OVER')
               IconButton(
-                tooltip: '强制结束',
-                icon: const Icon(Icons.stop_circle_outlined, color: kBlood),
+                tooltip: tr('强制结束'),
+                icon: Icon(Icons.stop_circle_outlined, color: kBlood),
                 onPressed: () async {
                   try {
                     await store.endGame();
@@ -491,7 +516,7 @@ class _GameScreenState extends State<GameScreen> {
                 },
               ),
             IconButton(
-              tooltip: '离开房间',
+              tooltip: tr('离开房间'),
               icon: const Icon(Icons.logout),
               onPressed: () async {
                 try {
@@ -538,7 +563,7 @@ class _GameScreenState extends State<GameScreen> {
                           focusNode: _chatFocus,
                           maxLength: 200,
                           decoration: InputDecoration(
-                            hintText: _dockIndex == 2 ? '狼队内部消息（队友可见）…' : '说点什么…',
+                            hintText: _dockIndex == 2 ? tr('狼队内部消息（队友可见）…') : tr('说点什么…'),
                             isDense: true,
                             counterText: '',
                           ),
@@ -584,19 +609,19 @@ class _GameScreenState extends State<GameScreen> {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('#${s['seat']}', style: const TextStyle(color: kDim, fontSize: 11)),
+                Tx('#${s['seat']}', style: TextStyle(color: kDim, fontSize: 11)),
                 if (mc != null) ...[
                   const SizedBox(width: 4),
-                  Text(markLabels[mark], style: TextStyle(color: mc, fontSize: 10)),
+                  Tx(markLabels[mark], style: TextStyle(color: mc, fontSize: 10)),
                 ],
               ],
             ),
-            Text('${s['nickname'] ?? ''}',
+            Tx('${s['nickname'] ?? ''}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: alive ? kMoon : kDim, fontSize: 12, fontWeight: FontWeight.bold)),
-            if (s['role'] != null) Text('${s['role']}', style: const TextStyle(color: kAccent, fontSize: 11)),
-            if (!alive) const Text('出局', style: TextStyle(color: kBlood, fontSize: 11)),
+            if (s['role'] != null) Tx('${s['role']}', style: TextStyle(color: kAccent, fontSize: 11)),
+            if (!alive) Tx('出局', style: TextStyle(color: kBlood, fontSize: 11)),
           ],
         ),
       ),
@@ -630,7 +655,7 @@ class _GameScreenState extends State<GameScreen> {
                 FilledButton.icon(
                   onPressed: () => store.returnToRoom(),
                   icon: const Icon(Icons.meeting_room_outlined, size: 18),
-                  label: const Text('返回房间'),
+                  label: const Tx('返回房间'),
                 ),
                 const SizedBox(width: 12),
                 OutlinedButton.icon(
@@ -642,7 +667,7 @@ class _GameScreenState extends State<GameScreen> {
                     }
                   },
                   icon: const Icon(Icons.logout, size: 18),
-                  label: const Text('退出房间'),
+                  label: const Tx('退出房间'),
                 ),
               ],
             ),
@@ -656,10 +681,10 @@ class _GameScreenState extends State<GameScreen> {
         width: double.infinity,
         padding: const EdgeInsets.all(12),
         color: kPanel,
-        child: Text(
+        child: Tx(
           actor != null && actor != 0 ? '⏳ 等待 $actor 号行动…' : '🌙 夜晚进行中…',
           textAlign: TextAlign.center,
-          style: const TextStyle(color: kDim),
+          style: TextStyle(color: kDim),
         ),
       );
     }
@@ -674,10 +699,10 @@ class _GameScreenState extends State<GameScreen> {
           runSpacing: 8,
           children: [
             for (final t in aliveOthers)
-              ActionChip(label: Text('$t 号'), onPressed: () => _act({'target': t})),
+              ActionChip(label: Tx('$t 号'), onPressed: () => _act({'target': t})),
             if (allowPass)
               ActionChip(
-                  label: const Text('放弃/弃票'),
+                  label: const Tx('放弃/弃票'),
                   backgroundColor: kPanel,
                   onPressed: () => _act({'target': 0})),
           ],
@@ -690,15 +715,15 @@ class _GameScreenState extends State<GameScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(_actionTitle(kind), style: const TextStyle(color: kAccent, fontWeight: FontWeight.bold)),
+          Tx(_actionTitle(kind), style: TextStyle(color: kAccent, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
           if (kind == 'SPEECH' || kind == 'PK_SPEECH' || kind == 'LAST_WORDS')
             _speechPanel(kind)
           else if (kind == 'SHERIFF_SIGNUP')
             Row(children: [
-              FilledButton(onPressed: () => _act({'signup': true}), child: const Text('竞选上警')),
+              FilledButton(onPressed: () => _act({'signup': true}), child: const Tx('竞选上警')),
               const SizedBox(width: 10),
-              OutlinedButton(onPressed: () => _act({'signup': false}), child: const Text('不参与')),
+              OutlinedButton(onPressed: () => _act({'signup': false}), child: const Tx('不参与')),
             ])
           else if (kind == 'WITCH')
             _witchPanel(g, aliveOthers)
@@ -721,7 +746,7 @@ class _GameScreenState extends State<GameScreen> {
             minLines: 1,
             maxLines: 3,
             decoration: InputDecoration(
-              hintText: voiceOn ? '说话（🎙）或直接打字…（留空则过）' : '输入你的发言…（留空则过）',
+              hintText: voiceOn ? tr('说话（🎙）或直接打字…（留空则过）') : tr('输入你的发言…（留空则过）'),
               isDense: true,
             ),
           ),
@@ -737,13 +762,13 @@ class _GameScreenState extends State<GameScreen> {
             _act({'text': _speech.text.trim().isEmpty ? '（过）' : _speech.text.trim()});
             _speech.clear();
             if (mounted) setState(() => _micOn = false);
-          }, child: const Text('发言')),
+          }, child: const Tx('发言')),
           const SizedBox(height: 6),
           OutlinedButton(onPressed: () {
             if (_micOn) _store.stopMic();
             _act({'text': '（过）'});
             if (mounted) setState(() => _micOn = false);
-          }, child: const Text('过')),
+          }, child: const Tx('过')),
         ]),
       ],
     );
@@ -752,7 +777,7 @@ class _GameScreenState extends State<GameScreen> {
   Widget _micButton() {
     return IconButton.filled(
       onPressed: _toggleMic,
-      tooltip: _micOn ? '停止说话' : '说话',
+      tooltip: _micOn ? tr('停止说话') : tr('说话'),
       icon: Icon(_micOn ? Icons.mic : Icons.mic_none),
       color: const Color(0xFF1A1206),
       style: IconButton.styleFrom(backgroundColor: _micOn ? kBlood : kAccent),
@@ -771,7 +796,7 @@ class _GameScreenState extends State<GameScreen> {
         for (final c in show)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 1),
-            child: Text('${c.name}：${c.text}',
+            child: Tx('${c.name}：${c.text}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 12.5, color: c.kind == 'narrator' ? kDim : (c.mine ? kGreen : kText))),
@@ -805,11 +830,11 @@ class _GameScreenState extends State<GameScreen> {
         context: context,
         builder: (_) => AlertDialog(
           backgroundColor: kPanel,
-          title: const Text('举报这局的表现'),
-          content: TextField(controller: c, maxLength: 200, decoration: const InputDecoration(hintText: '原因（可留空）')),
+          title: const Tx('举报这局的表现'),
+          content: TextField(controller: c, maxLength: 200, decoration: InputDecoration(hintText: tr('原因（可留空）'))),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('提交')),
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Tx('取消')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Tx('提交')),
           ],
         ),
       );
@@ -846,7 +871,7 @@ class _GameScreenState extends State<GameScreen> {
       padding: const EdgeInsets.only(top: 10),
       child: Column(
         children: [
-          const Text('给这局的表现点个赞或安慰一下', style: TextStyle(color: kDim, fontSize: 12)),
+          Tx('给这局的表现点个赞或安慰一下', style: TextStyle(color: kDim, fontSize: 12)),
           const SizedBox(height: 6),
           ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 150),
@@ -857,29 +882,29 @@ class _GameScreenState extends State<GameScreen> {
                   ListTile(
                     dense: true,
                     visualDensity: VisualDensity.compact,
-                    title: Text('${s['seat']}号 · ${s['nickname'] ?? ''}',
-                        maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: kText, fontSize: 13)),
-                    subtitle: Text('👍${_kudosCount((s['userId'] as num).toInt(), 'PRAISE')} · 🫂${_kudosCount((s['userId'] as num).toInt(), 'COMFORT')}',
-                        style: const TextStyle(color: kDim, fontSize: 11)),
+                    title: Tx('${s['seat']}号 · ${s['nickname'] ?? ''}',
+                        maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: kText, fontSize: 13)),
+                    subtitle: Tx('👍${_kudosCount((s['userId'] as num).toInt(), 'PRAISE')} · 🫂${_kudosCount((s['userId'] as num).toInt(), 'COMFORT')}',
+                        style: TextStyle(color: kDim, fontSize: 11)),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
-                          tooltip: '点赞',
+                          tooltip: tr('点赞'),
                           visualDensity: VisualDensity.compact,
-                          icon: const Icon(Icons.thumb_up_outlined, size: 18, color: kGreen),
+                          icon: Icon(Icons.thumb_up_outlined, size: 18, color: kGreen),
                           onPressed: () => _kudos(store, gameId, (s['userId'] as num).toInt(), 'PRAISE', '点赞'),
                         ),
                         IconButton(
-                          tooltip: '安慰',
+                          tooltip: tr('安慰'),
                           visualDensity: VisualDensity.compact,
-                          icon: const Icon(Icons.volunteer_activism_outlined, size: 18, color: kMoon),
+                          icon: Icon(Icons.volunteer_activism_outlined, size: 18, color: kMoon),
                           onPressed: () => _kudos(store, gameId, (s['userId'] as num).toInt(), 'COMFORT', '安慰'),
                         ),
                         IconButton(
-                          tooltip: '举报',
+                          tooltip: tr('举报'),
                           visualDensity: VisualDensity.compact,
-                          icon: const Icon(Icons.flag_outlined, size: 18, color: kBlood),
+                          icon: Icon(Icons.flag_outlined, size: 18, color: kBlood),
                           onPressed: () => _kudos(store, gameId, (s['userId'] as num).toInt(), 'REPORT', '举报'),
                         ),
                       ],
@@ -903,11 +928,11 @@ class _GameScreenState extends State<GameScreen> {
       runSpacing: 8,
       children: [
         if (canSave)
-          ActionChip(label: Text('🧡 救 $killed 号'), onPressed: () => _act({'saveTarget': killed})),
+          ActionChip(label: Tx('🧡 救 $killed 号'), onPressed: () => _act({'saveTarget': killed})),
         if (canPoison)
           for (final t in aliveOthers)
-            ActionChip(label: Text('☠ $t'), backgroundColor: kPanel2, onPressed: () => _act({'poisonTarget': t})),
-        ActionChip(label: const Text('跳过'), backgroundColor: kPanel, onPressed: () => _act({'target': 0})),
+            ActionChip(label: Tx('☠ $t'), backgroundColor: kPanel2, onPressed: () => _act({'poisonTarget': t})),
+        ActionChip(label: const Tx('跳过'), backgroundColor: kPanel, onPressed: () => _act({'target': 0})),
       ],
     );
   }
@@ -974,7 +999,7 @@ class _GameScreenState extends State<GameScreen> {
             borderRadius: BorderRadius.circular(999),
             border: Border.all(color: active ? kAccent : kBorder),
           ),
-          child: Text(label, style: TextStyle(fontSize: 12.5, color: active ? kAccent : kDim)),
+          child: Tx(label, style: TextStyle(fontSize: 12.5, color: active ? kAccent : kDim)),
         ),
       ),
     );
@@ -993,7 +1018,7 @@ class _GameScreenState extends State<GameScreen> {
 
   Widget _chatList(List<WwChatLine> lines, {required bool wolf, required String empty}) {
     if (lines.isEmpty) {
-      return Center(child: Text(empty, style: const TextStyle(color: kDim, fontSize: 13)));
+      return Center(child: Tx(empty, style: TextStyle(color: kDim, fontSize: 13)));
     }
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -1001,7 +1026,7 @@ class _GameScreenState extends State<GameScreen> {
         for (final c in lines.reversed)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 3),
-            child: Text(
+            child: Tx(
               c.kind == 'narrator' ? '📢 ${c.text}' : '${wolf ? '🐺' : '💬'} ${c.name}：${c.text}',
               style: TextStyle(
                 fontSize: 13,
@@ -1028,8 +1053,8 @@ class _GameScreenState extends State<GameScreen> {
         Expanded(
           child: rows.isEmpty
               ? Center(
-                  child: Text(feed.isEmpty ? '本局还没有记录。' : '没有符合条件的记录。',
-                      style: const TextStyle(color: kDim, fontSize: 13)),
+                  child: Tx(feed.isEmpty ? '本局还没有记录。' : '没有符合条件的记录。',
+                      style: TextStyle(color: kDim, fontSize: 13)),
                 )
               : ListView(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -1069,7 +1094,7 @@ class _GameScreenState extends State<GameScreen> {
           borderRadius: BorderRadius.circular(999),
           border: Border.all(color: active ? kAccent : kBorder),
         ),
-        child: Text(label,
+        child: Tx(label,
             style: TextStyle(fontSize: 11.5, color: onTap == null ? kDim : (active ? kAccent : kText))),
       ),
     );
@@ -1090,17 +1115,17 @@ class _GameScreenState extends State<GameScreen> {
         children: [
           Row(
             children: [
-              const Expanded(child: Text('🧠 AI 对话总结', style: TextStyle(color: kAccent, fontSize: 12.5))),
+              Expanded(child: Tx('🧠 AI 对话总结', style: TextStyle(color: kAccent, fontSize: 12.5))),
               GestureDetector(
                 onTap: () => setState(() => _summaryOpen = false),
-                child: const Text('✕', style: TextStyle(color: kDim, fontSize: 12.5)),
+                child: Tx('✕', style: TextStyle(color: kDim, fontSize: 12.5)),
               ),
             ],
           ),
           const SizedBox(height: 6),
-          Text(
+          Tx(
             _summaryLoading ? '正在归纳本局发言…' : (_summary ?? ''),
-            style: const TextStyle(color: kText, fontSize: 12.5, height: 1.45),
+            style: TextStyle(color: kText, fontSize: 12.5, height: 1.45),
           ),
         ],
       ),
@@ -1115,7 +1140,7 @@ class _GameScreenState extends State<GameScreen> {
       onTap: actor > 0 ? () => setState(() => _feedSeat = _feedSeat == actor ? 0 : actor) : null,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
-        child: Text(
+        child: Tx(
           '${_feedEmoji(t)} ${feedTextZh(e)}',
           style: TextStyle(fontSize: 13, height: 1.4, color: night ? kDim : kText),
         ),

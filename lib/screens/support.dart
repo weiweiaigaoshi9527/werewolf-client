@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../api.dart';
 import '../store.dart';
 import '../theme.dart';
+import '../i18n.dart';
 
 /// 在线客服：对话存在工单里，玩家发问后由「在线客服」（AI）自动答复；
 /// 解决不了或玩家点「转人工」后由管理员接手（显示为「人工客服」）。
@@ -68,7 +69,7 @@ class _SupportScreenState extends State<SupportScreen> {
     }
   }
 
-  void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Tx(m)));
 
   Future<void> _send() async {
     final t = _input.text.trim();
@@ -106,7 +107,7 @@ class _SupportScreenState extends State<SupportScreen> {
       appBar: AppBar(
         title: Row(
           children: [
-            const Text('💬 在线客服'),
+            const Tx('💬 在线客服'),
             const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -115,7 +116,7 @@ class _SupportScreenState extends State<SupportScreen> {
                 borderRadius: BorderRadius.circular(999),
                 border: Border.all(color: badgeColor),
               ),
-              child: Text(badge, style: TextStyle(color: badgeColor, fontSize: 11)),
+              child: Tx(badge, style: TextStyle(color: badgeColor, fontSize: 11)),
             ),
           ],
         ),
@@ -126,10 +127,10 @@ class _SupportScreenState extends State<SupportScreen> {
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
                 : _thread.isEmpty
-                    ? const Center(
+                    ? Center(
                         child: Padding(
-                          padding: EdgeInsets.all(24),
-                          child: Text(
+                          padding: const EdgeInsets.all(24),
+                          child: Tx(
                             '你好，我是本站在线客服 👋\n把遇到的问题发给我，我会尽快帮你处理；\n需要真人协助也可以点下面的「转人工客服」。',
                             textAlign: TextAlign.center,
                             style: TextStyle(color: kDim, height: 1.7),
@@ -156,8 +157,8 @@ class _SupportScreenState extends State<SupportScreen> {
                         child: TextField(
                           controller: _input,
                           maxLength: 500,
-                          decoration: const InputDecoration(
-                            hintText: '描述你遇到的问题…',
+                          decoration: InputDecoration(
+                            hintText: tr('描述你遇到的问题…'),
                             isDense: true,
                             counterText: '',
                           ),
@@ -165,7 +166,7 @@ class _SupportScreenState extends State<SupportScreen> {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      FilledButton(onPressed: () => unawaited(_send()), child: const Text('发送')),
+                      FilledButton(onPressed: () => unawaited(_send()), child: const Tx('发送')),
                     ],
                   ),
                   if (!_human && !_needsHuman)
@@ -174,7 +175,7 @@ class _SupportScreenState extends State<SupportScreen> {
                       child: TextButton.icon(
                         onPressed: () => unawaited(_toHuman()),
                         icon: const Icon(Icons.support_agent, size: 16),
-                        label: const Text('🙋 转人工客服'),
+                        label: const Tx('🙋 转人工客服'),
                       ),
                     ),
                 ],
@@ -206,17 +207,17 @@ class _SupportScreenState extends State<SupportScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(who,
+            Tx(who,
                 style: TextStyle(
                     fontSize: 11,
                     color: ai ? kDim : (admin ? kAccent : kGreen),
                     fontWeight: FontWeight.bold)),
             const SizedBox(height: 3),
-            Text('${m['content'] ?? ''}', style: const TextStyle(color: kText, fontSize: 13.5, height: 1.45)),
+            Tx('${m['content'] ?? ''}', style: TextStyle(color: kText, fontSize: 13.5, height: 1.45)),
             if (at.length >= 11)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: Text(at.substring(5, 16), style: const TextStyle(color: kDim, fontSize: 10)),
+                child: Tx(at.substring(5, 16), style: TextStyle(color: kDim, fontSize: 10)),
               ),
           ],
         ),

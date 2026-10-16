@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../api.dart';
 import '../store.dart';
 import '../theme.dart';
+import '../i18n.dart';
 
 /// 全 AI 队局（观战房）创建弹窗：先拉可选板子，选完立刻开局，自己作为观战者进入。
 /// 对应网页版大厅的「全 AI 队局」按钮。
@@ -13,13 +14,13 @@ Future<void> openAiShowCreate(BuildContext context) async {
     boards = await store.aiShowBoards();
   } on AppError catch (e) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Tx(e.message)));
     }
     return;
   }
   if (boards.isEmpty) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('服务端没有可用的剧本')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Tx('服务端没有可用的剧本')));
     }
     return;
   }
@@ -30,33 +31,33 @@ Future<void> openAiShowCreate(BuildContext context) async {
     builder: (c) => StatefulBuilder(
       builder: (c, setDialogState) => AlertDialog(
         backgroundColor: kPanel,
-        title: const Text('🎬 全 AI 队局'),
+        title: const Tx('🎬 全 AI 队局'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('整局由 AI 自动对战，你可以随时进场旁观；一局结束后会自动续开。',
+            Tx('整局由 AI 自动对战，你可以随时进场旁观；一局结束后会自动续开。',
                 style: TextStyle(color: kDim, height: 1.6, fontSize: 13)),
             const SizedBox(height: 14),
             DropdownButtonFormField<String>(
               value: boardId,
-              decoration: const InputDecoration(labelText: '剧本'),
+              decoration: InputDecoration(labelText: tr('剧本')),
               items: [
                 for (final b in boards)
-                  DropdownMenuItem(value: '${b['id']}', child: Text('${b['name'] ?? b['id']}')),
+                  DropdownMenuItem(value: '${b['id']}', child: Tx('${b['name'] ?? b['id']}')),
               ],
               onChanged: (v) => setDialogState(() => boardId = v ?? boardId),
             ),
-            const Padding(
-              padding: EdgeInsets.only(top: 8),
-              child: Text('提示：开局后会直接进入对局页，可在「对局记录」栏看 AI 的完整行动。',
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Tx('提示：开局后会直接进入对局页，可在「对局记录」栏看 AI 的完整行动。',
                   style: TextStyle(color: kDim, fontSize: 12)),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('开局')),
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Tx('取消')),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Tx('开局')),
         ],
       ),
     ),
@@ -66,7 +67,7 @@ Future<void> openAiShowCreate(BuildContext context) async {
     await store.createAiShow(boardId);
   } on AppError catch (e) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Tx(e.message)));
     }
   }
 }
@@ -113,14 +114,14 @@ class _AiShowSectionState extends State<AiShowSection> {
           children: [
             Row(
               children: [
-                const Expanded(
-                  child: Text('🎬 全 AI 观战厅',
+                Expanded(
+                  child: Tx('🎬 全 AI 观战厅',
                       style: TextStyle(color: kMoon, fontWeight: FontWeight.bold)),
                 ),
                 if (store.feat('aiShow'))
-                  TextButton(onPressed: () => openAiShowCreate(context), child: const Text('开一场')),
+                  TextButton(onPressed: () => openAiShowCreate(context), child: const Tx('开一场')),
                 IconButton(
-                  tooltip: '刷新',
+                  tooltip: tr('刷新'),
                   icon: const Icon(Icons.refresh, size: 18),
                   onPressed: () {
                     setState(() => _loading = true);
@@ -135,9 +136,9 @@ class _AiShowSectionState extends State<AiShowSection> {
                 child: LinearProgressIndicator(minHeight: 2),
               )
             else if (_shows.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 6),
-                child: Text('暂无进行中的全 AI 对局。', style: TextStyle(color: kDim, fontSize: 13)),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Tx('暂无进行中的全 AI 对局。', style: TextStyle(color: kDim, fontSize: 13)),
               )
             else
               for (final s in _shows) _showRow(store, s),
@@ -157,19 +158,19 @@ class _AiShowSectionState extends State<AiShowSection> {
     return ListTile(
       dense: true,
       contentPadding: EdgeInsets.zero,
-      leading: const Text('🎬', style: TextStyle(fontSize: 22)),
-      title: Text('房间 $roomNo · ${s['boardName'] ?? '全 AI 队局'}', style: const TextStyle(color: kText)),
-      subtitle: Text(
+      leading: const Tx('🎬', style: TextStyle(fontSize: 22)),
+      title: Tx('房间 $roomNo · ${s['boardName'] ?? '全 AI 队局'}', style: TextStyle(color: kText)),
+      subtitle: Tx(
         playing ? '第 $day 天 · 存活 $alive/$total · $watchers 人旁观' : '等待续开 · $watchers 人旁观',
-        style: const TextStyle(color: kDim, fontSize: 12),
+        style: TextStyle(color: kDim, fontSize: 12),
       ),
-      trailing: const Text('观战 ›', style: TextStyle(color: kAccent, fontSize: 12)),
+      trailing: Tx('观战 ›', style: TextStyle(color: kAccent, fontSize: 12)),
       onTap: () async {
         try {
           await store.spectate(roomNo);
         } on AppError catch (e) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Tx(e.message)));
           }
         }
       },
