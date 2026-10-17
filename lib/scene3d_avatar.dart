@@ -324,7 +324,7 @@ Avatar buildAvatar(String? skinId) {
   }
 
   // ---- 骨盆 + 躯干（车削出腰细胸宽的轮廓）----
-  put(Geo.sphere(0.19, 8, 5, cloth, MatKind.cloth), y: 0.55, sy: 0.72, sz: 0.86);
+  put(Geo.sphere(0.19, 10, 6, cloth, MatKind.cloth), y: 0.55, sy: 0.72, sz: 0.86);
 
   final torsoProfile = <List<double>>[
     [0.150, 0.00], [0.180, 0.06], [0.210, 0.14], [0.232, 0.24],
@@ -332,8 +332,8 @@ Avatar buildAvatar(String? skinId) {
   ];
   final torsoBase = M4.translate(0, 0.56, 0);
   final torsoPart = Part(
-    Geo.lathe(torsoProfile, 8, cloth, MatKind.cloth,
-        faceColors: clothFaces(8, torsoProfile.length - 1)),
+    Geo.lathe(torsoProfile, 12, cloth, MatKind.cloth,
+        faceColors: clothFaces(12, torsoProfile.length - 1)),
     torsoBase,
   );
   parts.add(torsoPart);
@@ -354,7 +354,7 @@ Avatar buildAvatar(String? skinId) {
   put(Geo.cylinder(0.058, 0.07, 0.11, 6, skinC, MatKind.skin, capTop: false, capBot: false),
       y: 1.115);
   final headBase = M4.translate(0, 1.30, 0);
-  final headPart = Part(Geo.sphere(0.17, 8, 6, skinC, MatKind.skin), headBase);
+  final headPart = Part(Geo.sphere(0.17, 12, 8, skinC, MatKind.skin), headBase);
   parts.add(headPart);
 
   // ---- 五官 ----
@@ -378,14 +378,14 @@ Avatar buildAvatar(String? skinId) {
 
   // ---- 头发（兜帽 / 头盔会盖住，跳过）----
   if (sk.hat != HatKind.hood && sk.hat != HatKind.helm && sk.hair != null) {
-    put(Geo.sphere(0.178, 8, 3, sk.hair!, MatKind.cloth, thetaLen: 1.05),
+    put(Geo.sphere(0.178, 12, 3, sk.hair!, MatKind.cloth, thetaLen: 1.05),
         y: 1.30, sy: 1.06, sz: 1.05);
   }
 
   // ---- 披风（开口锥壳，绕 Y 转一点让开口朝前）----
   if (sk.cape != null) {
     put(
-      Geo.cylinder(0, 0.40, 0.92, 8, sk.cape!, MatKind.cloth,
+      Geo.cylinder(0, 0.40, 0.92, 12, sk.cape!, MatKind.cloth,
           capTop: false, capBot: false, thetaLen: math.pi * 1.3, twoSided: true),
       y: 0.80,
       z: -0.05,

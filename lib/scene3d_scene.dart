@@ -192,8 +192,12 @@ class Scene3dScene {
       M4.translate(0, -0.01, 0).mul(M4.rotX(-math.pi / 2)),
     ));
     // 桌面 + 桌沿 + 桌腿 + 中央符文盘
+    // 桌面用「侧壁 + 整张毛毡顶面」，而不是「木顶 + 贴在木顶上的毡心」：
+    // 后者是两块共面（仅差 0.01）的大面，画家算法按面片重心排序，
+    // 会把毡心的近半块排到桌板后面，表现为桌面像缺了一半（实测出图确认）。
     statics.add(Part(
-      Geo.cylinder(kRTable, kRTable, 0.32, 24, 0xFF5A3B22, MatKind.cloth),
+      Geo.cylinder(kRTable, kRTable, 0.32, 24, 0xFF5A3B22, MatKind.cloth,
+          capTop: false),
       M4.translate(0, 1.0, 0),
     ));
     statics.add(Part(
@@ -205,8 +209,8 @@ class Scene3dScene {
       M4.translate(0, 0.47, 0),
     ));
     statics.add(Part(
-      Geo.circle(kRTable * 0.72, 18, 0xFF1B2650, MatKind.cloth),
-      M4.translate(0, 1.17, 0).mul(M4.rotX(-math.pi / 2)),
+      Geo.circle(kRTable, 24, 0xFF1B2650, MatKind.cloth),
+      M4.translate(0, 1.16, 0).mul(M4.rotX(-math.pi / 2)),
     ));
     // 提灯：灯笼罩（开口双面）+ 火焰
     statics.add(Part(

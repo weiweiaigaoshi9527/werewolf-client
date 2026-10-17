@@ -352,12 +352,19 @@ class _Scene3dPainter extends CustomPainter {
 
   /// 贴地椭圆假阴影：软件渲染没有实时阴影，用压暗的地面椭圆替代。
   void _paintShadows(Canvas canvas, Scene3dFrame frame) {
-    final paint = Paint()..color = const Color(0xFF04060C).withOpacity(.45);
+    // 三层同心椭圆、由外向内递增透明度，叠出柔和边缘——
+    // 单块实心黑饼太生硬；叠加后中心约 0.39，与旧版观感亮度接近。
+    const layers = [(1.45, 0.10), (1.20, 0.13), (1.00, 0.16)];
     for (final n in scene.seats) {
       if (!n.avatarVisible) continue;
-      final e = _groundEllipse(frame, V3(n.x, 0.015, n.z), 0.62);
-      if (e == null) continue;
-      canvas.drawOval(Rect.fromCenter(center: e.c, width: e.rx * 2, height: e.ry * 2), paint);
+      for (final (scale, op) in layers) {
+        final e = _groundEllipse(frame, V3(n.x, 0.015, n.z), 0.62 * scale);
+        if (e == null) continue;
+        canvas.drawOval(
+          Rect.fromCenter(center: e.c, width: e.rx * 2, height: e.ry * 2),
+          Paint()..color = const Color(0xFF04060C).withOpacity(op),
+        );
+      }
     }
     // 圆桌下方也压一圈，让桌子「落」在地上
     final t = _groundEllipse(frame, const V3(0, 0.012, 0), kRTable * 0.95);

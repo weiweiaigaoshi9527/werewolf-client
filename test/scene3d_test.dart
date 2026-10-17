@@ -3,12 +3,21 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:werewolf_app/appearance.dart';
+import 'package:werewolf_app/api.dart';
+import 'package:werewolf_app/config.dart';
 import 'package:werewolf_app/scene3d.dart';
 import 'package:werewolf_app/scene3d_avatar.dart';
 import 'package:werewolf_app/scene3d_scene.dart';
+import 'package:werewolf_app/screens/game.dart';
 import 'package:werewolf_app/screens/scene3d_view.dart';
+import 'package:werewolf_app/store.dart';
+import 'package:werewolf_app/theme.dart';
+
+import 'fixtures/server_views.dart';
 
 /// 3D 视角（P5）回归。
 ///
@@ -647,6 +656,73 @@ void main() {
       expect(s.camera.dist, 7.4);
       s.camera.reset();
       expect(s.camera.dist, 16.5);
+    });
+  });
+
+  group('接线（回归：3D 必须能从对局页真的进去）', () {
+    /// 建一个带 MockClient 的 store 并灌入白天对局视图。
+    /// 去掉身份牌以绕过开局翻牌弹窗（与 hotkeys_test 同做法）。
+    AppStore wiredStore() {
+      SharedPreferences.setMockInitialValues({});
+      final client = MockClient((req) async => http.Response('{}', 200));
+      final s = AppStore(ApiClient(
+          ServerConfig(baseUrl: 'https://unit.test.invalid:11111'),
+          client: client));
+      s.sfx.enabled = false; // 避免 AudioPlayer 触达 EventChannel
+      final g = gameStateDay();
+      g['myInfo'] = null;
+      s.handleWsEvent(g);
+      return s;
+    }
+
+    Future<void> pumpGame(WidgetTester tester, AppStore store) async {
+      tester.view.physicalSize = const Size(1200, 2000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(ChangeNotifierProvider.value(
+        value: store,
+        child: MaterialApp(theme: werewolfTheme(), home: const GameScreen()),
+      ));
+      await tester.pump(); // autofocus 取焦在 post-frame 回调里
+    }
+
+    // 这一组是为了防「引擎写好了、单测全过、但页面上没有入口」的漏网——
+    // 3D 的组件测试曾直接挂载 Scene3dView，绕过了对局页，于是接线缺失无人发现。
+    testWidgets('默认 2D 座位条；开 3D 后挂载场景且高度夹到 420；关回 2D', (tester) async {
+      await pumpGame(tester, wiredStore());
+      expect(scene3dMode.on, isFalse);
+      expect(find.byType(Scene3dView), findsNothing);
+
+      await scene3dMode.setOn(true);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.byType(Scene3dView), findsOneWidget);
+      // 屏高 2000 → 2000 * 0.42 = 840 → 夹到上限 420
+      expect(tester.getSize(find.byType(Scene3dView)).height, 420);
+
+      await scene3dMode.setOn(false);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.byType(Scene3dView), findsNothing, reason: '切回 2D 后应当卸载 3D 场景');
+    });
+
+    testWidgets('顶栏 3D 按钮点得动：图标与场景同步切换', (tester) async {
+      await pumpGame(tester, wiredStore());
+      expect(find.byIcon(Icons.view_in_ar_outlined), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.view_in_ar_outlined));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(scene3dMode.on, isTrue);
+      expect(find.byType(Scene3dView), findsOneWidget);
+      expect(find.byIcon(Icons.threed_rotation), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.threed_rotation));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(scene3dMode.on, isFalse);
+      expect(find.byType(Scene3dView), findsNothing);
+      expect(find.byIcon(Icons.view_in_ar_outlined), findsOneWidget);
     });
   });
 }

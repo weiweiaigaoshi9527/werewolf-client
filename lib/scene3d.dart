@@ -784,6 +784,7 @@ class Scene3dRenderer {
     final ambMul = _kindAmbient(mesh.kind);
     final difMul = _kindDiffuse(mesh.kind);
     final specMul = _kindSpecular(mesh.kind);
+    final rimMul = _kindRim(mesh.kind);
     final faceColors = mesh.faceColors;
     final baseColor = mesh.color;
     final lx = Scene3dLight.lightDir.x;
@@ -855,21 +856,31 @@ class Scene3dRenderer {
       var gg = bg * lg;
       var bbv = bb * lb;
 
+      // 视线向量：高光与边缘光都要用，逐面只算一次。
+      final ex = ex0 - mx, ey = ey0 - my, ez = ez0 - mz;
+      final el = math.sqrt(ex * ex + ey * ey + ez * ez);
+
       // 金属/点缀的高光（半程向量）
-      if (specMul > 0) {
-        final ex = ex0 - mx, ey = ey0 - my, ez = ez0 - mz;
-        final el = math.sqrt(ex * ex + ey * ey + ez * ez);
-        if (el > 1e-6) {
-          final hx = lx + ex / el, hy = ly + ey / el, hz = lz + ez / el;
-          final hl = math.sqrt(hx * hx + hy * hy + hz * hz);
-          if (hl > 1e-6) {
-            final ndh = math.max(0.0, (nx * hx + ny * hy + nz * hz) / hl);
-            final sp = specMul * math.pow(ndh, 26).toDouble();
-            rr += sp;
-            gg += sp;
-            bbv += sp;
-          }
+      if (specMul > 0 && el > 1e-6) {
+        final hx = lx + ex / el, hy = ly + ey / el, hz = lz + ez / el;
+        final hl = math.sqrt(hx * hx + hy * hy + hz * hz);
+        if (hl > 1e-6) {
+          final ndh = math.max(0.0, (nx * hx + ny * hy + nz * hz) / hl);
+          final sp = specMul * math.pow(ndh, 26).toDouble();
+          rr += sp;
+          gg += sp;
+          bbv += sp;
         }
+      }
+
+      // 边缘光（Fresnel 近似）：视线与法线越垂直越亮。
+      // 软件渲染只有平片着色，这一项让角色轮廓从暗背景里「立」起来。
+      if (rimMul > 0 && el > 1e-6) {
+        final ndv = (nx * ex + ny * ey + nz * ez) / el;
+        final rim = rimMul * math.pow(1.0 - ndv.abs(), 3).toDouble();
+        rr += rim * 0.62;
+        gg += rim * 0.76;
+        bbv += rim;
       }
 
       // 雾：把远处压向背景色，制造纵深。
@@ -911,6 +922,15 @@ class Scene3dRenderer {
         MatKind.skin => 0.85,
         MatKind.accent => 1.0,
         MatKind.dark => 0.62,
+      };
+
+  /// 边缘光强度：金属最亮（要反光感），布料最弱（避免像塑料）。
+  static double _kindRim(MatKind k) => switch (k) {
+        MatKind.metal => 0.20,
+        MatKind.accent => 0.13,
+        MatKind.skin => 0.15,
+        MatKind.cloth => 0.09,
+        MatKind.dark => 0.04,
       };
 
   static double _kindSpecular(MatKind k) => switch (k) {
